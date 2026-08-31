@@ -22,12 +22,14 @@ class PromptBuilder:
         messages: list[Message],
         skills: list[Skill] | None = None,
         tool_names: set[str] | None = None,
+        team_section: str | None = None,
     ) -> list[dict[str, str]]:
         system_prompt = self._system_prompt(
             agent,
             chat,
             skills=skills or [],
             tool_names=tool_names or set(),
+            team_section=team_section,
         )
         history = self._bounded_history(messages)
         return [{"role": "system", "content": system_prompt}, *history]
@@ -39,6 +41,7 @@ class PromptBuilder:
         *,
         skills: list[Skill],
         tool_names: set[str],
+        team_section: str | None,
     ) -> str:
         sections = [
             (
@@ -80,6 +83,8 @@ class PromptBuilder:
                 )
             )
         available_tools = ", ".join(sorted(tool_names)) or "无"
+        if team_section:
+            sections.append(("Team 与委派边界", team_section))
         sections.append(
             (
                 "当前运行环境",

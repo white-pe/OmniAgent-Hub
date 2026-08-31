@@ -254,7 +254,7 @@ export default function BlueprintCreator({
             />
           </Form.Item>
           <Form.Item name="is_coordinator" valuePropName="checked">
-            <Checkbox>作为协调 Agent（阶段 6 才会真正开放委派运行）</Checkbox>
+            <Checkbox>作为协调 Agent（加入 Team 后可进行受控委派）</Checkbox>
           </Form.Item>
           <div className="blueprint-grid">
             <Form.Item

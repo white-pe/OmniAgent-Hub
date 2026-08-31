@@ -32,6 +32,8 @@ export interface AgentRun {
   id: string;
   session_id: string;
   agent_id: string;
+  parent_run_id: string | null;
+  depth: number;
   provider_id: string;
   model_id: string;
   model_name: string;
@@ -69,11 +71,40 @@ export interface ToolCall {
   created_at: string;
 }
 
+export type DelegationStatus =
+  | "requested"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface Delegation {
+  id: string;
+  parent_run_id: string;
+  child_run_id: string;
+  team_id: string;
+  team_name: string;
+  source_agent_id: string;
+  source_agent_name: string;
+  target_agent_id: string;
+  target_agent_name: string;
+  task: string;
+  status: DelegationStatus;
+  result_text: string;
+  error_message: string | null;
+  depth: number;
+  duration_ms: number | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
 export interface ChatDetail {
   session: ChatSession;
   messages: ChatMessage[];
   runs: AgentRun[];
   tool_calls: ToolCall[];
+  delegations: Delegation[];
 }
 
 export async function listChats(agentId?: string): Promise<ChatSession[]> {

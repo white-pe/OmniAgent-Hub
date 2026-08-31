@@ -391,7 +391,7 @@ function AgentForm({
         <Select options={models} disabled={!models.length} />
       </Form.Item>
       <Form.Item name="is_coordinator" valuePropName="checked">
-        <Checkbox>作为协调 Agent（当前只保存标记，阶段 6 实现委派）</Checkbox>
+        <Checkbox>作为协调 Agent（可在 Team 中获得受控委派能力）</Checkbox>
       </Form.Item>
       {!hideSubmit && (
         <Button type="primary" htmlType="submit" loading={saving} disabled={!providers.length}>

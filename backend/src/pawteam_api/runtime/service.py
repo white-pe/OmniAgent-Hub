@@ -21,10 +21,13 @@ from pawteam_api.models import (
     Agent,
     AgentRun,
     ChatSession,
+    Delegation,
     Message,
     ProviderModel,
+    Team,
     ToolCall,
 )
+from pawteam_api.team_schemas import DelegationResponse
 from pawteam_api.tool_schemas import ToolCallResponse
 
 ACTIVE_RUN_STATUSES = ("queued", "running", "cancelling")
@@ -121,11 +124,51 @@ class ChatService:
             if run_ids
             else []
         )
+        delegations = (
+            (
+                await self.session.scalars(
+                    select(Delegation)
+                    .where(Delegation.root_run_id.in_(run_ids))
+                    .order_by(Delegation.created_at)
+                )
+            ).all()
+            if run_ids
+            else []
+        )
         return ChatDetailResponse(
             session=self._session_response(chat, agent_name),
             messages=[self._message_response(message) for message in messages],
             runs=[run_response(run) for run in runs],
             tool_calls=[tool_call_response(tool_call) for tool_call in tool_calls],
+            delegations=[
+                await self._delegation_response(delegation)
+                for delegation in delegations
+            ],
+        )
+
+    async def _delegation_response(self, delegation: Delegation) -> DelegationResponse:
+        team = await self.session.get(Team, delegation.team_id)
+        source = await self.session.get(Agent, delegation.source_agent_id)
+        target = await self.session.get(Agent, delegation.target_agent_id)
+        return DelegationResponse(
+            id=delegation.id,
+            parent_run_id=delegation.parent_run_id,
+            child_run_id=delegation.child_run_id,
+            team_id=delegation.team_id,
+            team_name=team.name if team is not None else "Deleted Team",
+            source_agent_id=delegation.source_agent_id,
+            source_agent_name=source.name if source is not None else "Deleted Agent",
+            target_agent_id=delegation.target_agent_id,
+            target_agent_name=target.name if target is not None else "Deleted Agent",
+            task=delegation.task,
+            status=delegation.status,
+            result_text=delegation.result_text,
+            error_message=delegation.error_message,
+            depth=delegation.depth,
+            duration_ms=delegation.duration_ms,
+            created_at=delegation.created_at,
+            started_at=delegation.started_at,
+            finished_at=delegation.finished_at,
         )
 
     @staticmethod
@@ -179,6 +222,7 @@ class RunCommandService:
             select(AgentRun.id)
             .where(
                 AgentRun.session_id == chat_id,
+                AgentRun.parent_run_id.is_(None),
                 AgentRun.status.in_(ACTIVE_RUN_STATUSES),
             )
             .limit(1)
@@ -198,6 +242,8 @@ class RunCommandService:
             id=run_id,
             session_id=chat.id,
             agent_id=agent.id,
+            parent_run_id=None,
+            depth=0,
             provider_id=agent.provider_id,
             model_id=agent.model_id,
             model_name=model_name,
@@ -258,6 +304,8 @@ def run_response(run: AgentRun) -> RunResponse:
         id=run.id,
         session_id=run.session_id,
         agent_id=run.agent_id,
+        parent_run_id=run.parent_run_id,
+        depth=run.depth,
         provider_id=run.provider_id,
         model_id=run.model_id,
         model_name=run.model_name,

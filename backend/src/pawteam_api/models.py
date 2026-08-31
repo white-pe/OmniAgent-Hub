@@ -195,7 +195,10 @@ class AgentRun(Base):
             "uq_runs_one_active_per_session",
             "session_id",
             unique=True,
-            sqlite_where=text("status IN ('queued', 'running', 'cancelling')"),
+            sqlite_where=text(
+                "parent_run_id IS NULL "
+                "AND status IN ('queued', 'running', 'cancelling')"
+            ),
         ),
     )
 
@@ -210,6 +213,10 @@ class AgentRun(Base):
     agent_id: Mapped[str] = mapped_column(
         ForeignKey("agents.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    parent_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    depth: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     provider_id: Mapped[str] = mapped_column(
         ForeignKey("providers.id", ondelete="RESTRICT"), nullable=False
     )
@@ -383,4 +390,99 @@ class ToolCall(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Team(Base):
+    """A coordinator-owned allowlist of Agents that may receive delegated work."""
+
+    __tablename__ = "teams"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
+    coordinator_agent_id: Mapped[str] = mapped_column(
+        ForeignKey("agents.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class TeamMember(Base):
+    """One Agent's explicit role inside a Team."""
+
+    __tablename__ = "team_members"
+    __table_args__ = (
+        UniqueConstraint("team_id", "agent_id", name="uq_team_member_agent"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    team_id: Mapped[str] = mapped_column(
+        ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    agent_id: Mapped[str] = mapped_column(
+        ForeignKey("agents.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Delegation(Base):
+    """A durable parent-to-child Agent handoff and its final result."""
+
+    __tablename__ = "delegations"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    parent_run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    root_run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    child_run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    team_id: Mapped[str] = mapped_column(
+        ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    source_agent_id: Mapped[str] = mapped_column(
+        ForeignKey("agents.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    target_agent_id: Mapped[str] = mapped_column(
+        ForeignKey("agents.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    task: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="requested")
+    result_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    depth: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

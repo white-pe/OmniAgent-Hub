@@ -24,6 +24,7 @@ import {
   type AgentRun,
   type ChatDetail,
   type ChatSession,
+  type DelegationStatus,
   type RunStatus,
   type ToolCallStatus,
 } from "../api/chats";
@@ -36,6 +37,13 @@ interface LiveToolEvent {
   id: string;
   name: string;
   status: ToolCallStatus;
+  message?: string;
+}
+
+interface LiveDelegationEvent {
+  id: string;
+  target: string;
+  status: DelegationStatus;
   message?: string;
 }
 
@@ -52,6 +60,7 @@ export default function ChatPage() {
   const [activeRun, setActiveRun] = useState<AgentRun>();
   const [liveOutput, setLiveOutput] = useState("");
   const [liveToolEvents, setLiveToolEvents] = useState<LiveToolEvent[]>([]);
+  const [liveDelegations, setLiveDelegations] = useState<LiveDelegationEvent[]>([]);
   const [streamState, setStreamState] = useState("未连接");
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -78,6 +87,7 @@ export default function ChatPage() {
     setActiveRun(undefined);
     setLiveOutput("");
     setLiveToolEvents([]);
+    setLiveDelegations([]);
     setDetail(undefined);
     if (!agentId) {
       setChats([]);
@@ -108,6 +118,7 @@ export default function ChatPage() {
     setActiveRun(undefined);
     setLiveOutput("");
     setLiveToolEvents([]);
+    setLiveDelegations([]);
     if (!chatId) {
       setDetail(undefined);
       return;
@@ -127,7 +138,10 @@ export default function ChatPage() {
       if (reconnect) {
         const running = [...nextDetail.runs]
           .reverse()
-          .find((run) => ACTIVE_STATUSES.includes(run.status));
+          .find(
+            (run) =>
+              run.parent_run_id === null && ACTIVE_STATUSES.includes(run.status),
+          );
         if (running) connectToRun(running, selectedChatId);
       }
     } catch (reason) {
@@ -140,6 +154,7 @@ export default function ChatPage() {
     setActiveRun(run);
     setLiveOutput("");
     setLiveToolEvents([]);
+    setLiveDelegations([]);
     setStreamState("正在连接 SSE");
     const source = new EventSource(`/api/runs/${run.id}/events`);
     eventSourceRef.current = source;
@@ -170,6 +185,15 @@ export default function ChatPage() {
     });
     source.addEventListener("tool.rejected", (event) => {
       updateLiveTool(event, "rejected");
+    });
+    source.addEventListener("delegation.started", (event) => {
+      updateLiveDelegation(event, "running");
+    });
+    source.addEventListener("delegation.completed", (event) => {
+      updateLiveDelegation(event, "completed");
+    });
+    source.addEventListener("delegation.failed", (event) => {
+      updateLiveDelegation(event, "failed");
     });
     source.addEventListener("run.completed", () => {
       finishStream(source, selectedChatId, "已完成");
@@ -208,6 +232,29 @@ export default function ChatPage() {
     if (status === "completed") setStreamState("Tool 已完成，模型继续生成");
   };
 
+  const updateLiveDelegation = (event: Event, status: DelegationStatus) => {
+    const data = parseEvent(event);
+    const id = typeof data.delegation_id === "string" ? data.delegation_id : "";
+    const target =
+      typeof data.target_agent_name === "string"
+        ? data.target_agent_name
+        : typeof data.target_agent_id === "string"
+          ? data.target_agent_id
+          : "成员 Agent";
+    if (!id) return;
+    setLiveDelegations((current) => [
+      ...current.filter((item) => item.id !== id),
+      {
+        id,
+        target,
+        status,
+        message: typeof data.message === "string" ? data.message : undefined,
+      },
+    ]);
+    if (status === "running") setStreamState(`正在等待成员：${target}`);
+    if (status === "completed") setStreamState("成员已返回，协调 Agent 正在汇总");
+  };
+
   const finishStream = (
     source: EventSource,
     selectedChatId: string,
@@ -219,6 +266,7 @@ export default function ChatPage() {
     setActiveRun(undefined);
     setLiveOutput("");
     setLiveToolEvents([]);
+    setLiveDelegations([]);
     void loadDetail(selectedChatId);
     void refreshChats();
   };
@@ -371,6 +419,18 @@ export default function ChatPage() {
                   ))}
                 </div>
               )}
+              {!!liveDelegations.length && (
+                <div className="delegation-live-panel">
+                  <Text strong>当前 Run 的 Agent 委派</Text>
+                  {liveDelegations.map((item) => (
+                    <div key={item.id} className="tool-row">
+                      <Text>{item.target}</Text>
+                      <DelegationStatusTag status={item.status} />
+                      <Text type="secondary">{item.message ?? "子 Run 正在独立执行"}</Text>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="chat-composer">
@@ -444,6 +504,21 @@ export default function ChatPage() {
                 ))}
               </div>
             )}
+            {!!detail.delegations.length && (
+              <div className="run-audit">
+                <Text strong>Agent 委派审计</Text>
+                {[...detail.delegations].reverse().slice(0, 8).map((delegation) => (
+                  <div key={delegation.id} className="delegation-row">
+                    <Text>{delegation.source_agent_name} → {delegation.target_agent_name}</Text>
+                    <DelegationStatusTag status={delegation.status} />
+                    <Text type="secondary" ellipsis={{ tooltip: delegation.task }}>
+                      {delegation.task}
+                    </Text>
+                    <Text type="secondary">深度 {delegation.depth}</Text>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </Card>
@@ -470,6 +545,17 @@ function ToolStatusTag({ status }: { status: ToolCallStatus }) {
     completed: "success",
     failed: "error",
     rejected: "warning",
+  };
+  return <Tag color={color[status]}>{status}</Tag>;
+}
+
+function DelegationStatusTag({ status }: { status: DelegationStatus }) {
+  const color: Record<DelegationStatus, string> = {
+    requested: "default",
+    running: "processing",
+    completed: "success",
+    failed: "error",
+    cancelled: "orange",
   };
   return <Tag color={color[status]}>{status}</Tag>;
 }

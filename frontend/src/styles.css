@@ -36,6 +36,31 @@ body {
   gap: 22px;
 }
 
+.team-layout {
+  display: grid;
+  gap: 22px;
+}
+
+.team-form-card .ant-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+}
+
+.team-form-card .ant-form-item:nth-child(2),
+.team-form-card .ant-form-item:nth-last-child(-n + 2) {
+  grid-column: 1 / -1;
+}
+
+.team-card {
+  height: 100%;
+}
+
+.team-members {
+  min-height: 32px;
+  margin-top: 8px;
+}
+
 .blueprint-card {
   border-color: rgb(255 122 26 / 32%);
   box-shadow: 0 18px 55px rgb(125 73 28 / 8%);
@@ -198,9 +223,25 @@ body {
   background: #f7f3ff;
 }
 
+.delegation-live-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-left: 3px solid #1677ff;
+  border-radius: 8px;
+  background: #f0f7ff;
+}
+
 .tool-row {
   display: grid;
   grid-template-columns: minmax(130px, 190px) 100px 1fr 90px;
+  gap: 10px;
+  align-items: center;
+}
+
+.delegation-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 100px 1fr 70px;
   gap: 10px;
   align-items: center;
 }
@@ -395,6 +436,10 @@ body {
   }
 
   .agent-form-card .ant-form {
+    display: block;
+  }
+
+  .team-form-card .ant-form {
     display: block;
   }
 

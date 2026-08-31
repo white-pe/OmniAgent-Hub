@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
 
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -21,9 +22,13 @@ from pawteam_api.models import (
     AgentRun,
     AgentTool,
     ChatSession,
+    Delegation,
     Message,
+    ProviderModel,
     RunEvent,
     Skill,
+    Team,
+    TeamMember,
     ToolCall,
 )
 from pawteam_api.providers.client import ProviderRequestError, ProviderTurnEvent
@@ -36,7 +41,18 @@ from pawteam_api.providers.service import (
 from pawteam_api.runtime.prompt_builder import PromptBuilder
 from pawteam_api.runtime.service import TERMINAL_RUN_STATUSES
 from pawteam_api.security.secret_store import SecretNotFoundError, SecretStore
-from pawteam_api.tools.registry import ToolContext, ToolRegistry
+from pawteam_api.teams.runtime import (
+    DelegateArguments,
+    DelegationMember,
+    DelegationTeam,
+    delegation_tool_definition,
+    team_prompt_section,
+)
+from pawteam_api.tools.registry import (
+    ToolContext,
+    ToolExecutionResult,
+    ToolRegistry,
+)
 from pawteam_api.workspaces.store import WorkspaceError, WorkspaceStore
 
 logger = logging.getLogger(__name__)
@@ -70,6 +86,7 @@ class PreparedRun:
     channel: str
     enabled_tools: set[str]
     tool_definitions: list[dict[str, object]]
+    delegation_teams: tuple[DelegationTeam, ...]
 
 
 @dataclass
@@ -142,6 +159,20 @@ class RunManager:
                     run_id,
                     "Application restarted while the Run was active",
                 )
+        async with self.session_factory() as session:
+            delegations = (
+                await session.scalars(
+                    select(Delegation).where(
+                        Delegation.status.in_(("requested", "running"))
+                    )
+                )
+            ).all()
+            now = self._utc_now()
+            for delegation in delegations:
+                delegation.status = "failed"
+                delegation.error_message = "Application restarted during delegation"
+                delegation.finished_at = now
+            await session.commit()
 
     async def shutdown(self) -> None:
         running = [task for task in self.tasks.values() if not task.done()]
@@ -150,7 +181,7 @@ class RunManager:
         if running:
             await asyncio.gather(*running, return_exceptions=True)
 
-    async def _execute(self, run_id: str) -> None:
+    async def _execute(self, run_id: str, *, propagate_cancel: bool = False) -> None:
         try:
             prepared = await self._prepare(run_id)
             if prepared is None:
@@ -214,6 +245,7 @@ class RunManager:
                                 "content": result,
                             }
                         )
+                        await self._assert_run_active(run_id)
                 else:
                     raise ProviderRequestError(
                         "Agent exceeded the maximum number of Tool steps"
@@ -223,6 +255,8 @@ class RunManager:
             await self._finish_completed(run_id)
         except asyncio.CancelledError:
             await self._finish_cancelled(run_id)
+            if propagate_cancel:
+                raise
         except RunCancelledError:
             await self._finish_cancelled(run_id)
         except TimeoutError:
@@ -263,13 +297,20 @@ class RunManager:
             runtime = await ProviderService(session, self.secret_store).runtime(
                 run.provider_id, run.model_id
             )
+            delegation = await session.scalar(
+                select(Delegation).where(Delegation.child_run_id == run.id)
+            )
             history = (
-                await session.scalars(
-                    select(Message)
-                    .where(Message.session_id == run.session_id)
-                    .order_by(Message.sequence)
-                )
-            ).all()
+                []
+                if delegation is not None
+                else (
+                    await session.scalars(
+                        select(Message)
+                        .where(Message.session_id == run.session_id)
+                        .order_by(Message.sequence)
+                    )
+                ).all()
+            )
             skills = (
                 await session.scalars(
                     select(Skill)
@@ -292,13 +333,30 @@ class RunManager:
                 ).all()
                 if self.tool_registry.contains(assignment.tool_name)
             }
+            delegation_teams = await self._delegation_teams(session, agent)
+            if delegation_teams:
+                enabled_tools.add("delegate_to_agent")
             messages = self.prompt_builder.build(
                 agent=agent,
                 chat=chat,
                 messages=list(history),
                 skills=list(channel_skills),
                 tool_names=enabled_tools,
+                team_section=(
+                    team_prompt_section(delegation_teams) if delegation_teams else None
+                ),
             )
+            if delegation is not None:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "你收到协调 Agent 委派的一项独立任务。只完成这项任务，"
+                            "直接返回可供协调者使用的结果；不要假装拥有协调者的"
+                            f"上下文或权限。\n\n任务：\n{delegation.task}"
+                        ),
+                    }
+                )
             now = self._utc_now()
             run.status = "running"
             run.started_at = now
@@ -314,6 +372,9 @@ class RunManager:
                 runtime.api_key,
                 self.settings.provider_timeout_seconds,
             )
+            tool_definitions = self.tool_registry.openai_definitions(enabled_tools)
+            if delegation_teams:
+                tool_definitions.append(delegation_tool_definition(delegation_teams))
             return PreparedRun(
                 client=client,
                 model_name=runtime.model_name,
@@ -322,7 +383,8 @@ class RunManager:
                 workspace_path=agent.workspace_path,
                 channel=chat.channel,
                 enabled_tools=enabled_tools,
-                tool_definitions=self.tool_registry.openai_definitions(enabled_tools),
+                tool_definitions=tool_definitions,
+                delegation_teams=delegation_teams,
             )
 
     async def _execute_tool(
@@ -378,17 +440,24 @@ class RunManager:
             )
             await session.commit()
 
-        result = await self.tool_registry.execute(
-            name=pending.name,
-            raw_arguments=pending.arguments,
-            enabled_names=prepared.enabled_tools,
-            context=ToolContext(
-                agent_id=prepared.agent_id,
+        if pending.name == "delegate_to_agent":
+            result = await self._execute_delegation(
                 run_id=run_id,
-                workspace_path=prepared.workspace_path,
-                channel=prepared.channel,
-            ),
-        )
+                raw_arguments=pending.arguments,
+                prepared=prepared,
+            )
+        else:
+            result = await self.tool_registry.execute(
+                name=pending.name,
+                raw_arguments=pending.arguments,
+                enabled_names=prepared.enabled_tools,
+                context=ToolContext(
+                    agent_id=prepared.agent_id,
+                    run_id=run_id,
+                    workspace_path=prepared.workspace_path,
+                    channel=prepared.channel,
+                ),
+            )
         finished_at = self._utc_now()
         duration_ms = max(0, round((finished_at - started_at).total_seconds() * 1000))
         async with self.session_factory() as session:
@@ -422,6 +491,313 @@ class RunManager:
             )
             await session.commit()
         return json.dumps(result.payload, ensure_ascii=False, default=str)
+
+    async def _execute_delegation(
+        self,
+        *,
+        run_id: str,
+        raw_arguments: str,
+        prepared: PreparedRun,
+    ) -> ToolExecutionResult:
+        try:
+            arguments = DelegateArguments.model_validate_json(raw_arguments or "{}")
+        except ValidationError as error:
+            message = error.errors(include_url=False)[0]["msg"]
+            return self._delegation_rejected(
+                {}, f"Invalid delegation arguments: {message}"
+            )
+        argument_data = arguments.model_dump()
+        if len(arguments.task) > self.settings.delegation_task_max_chars:
+            return self._delegation_rejected(
+                argument_data, "Delegation task exceeds the configured size limit"
+            )
+        team = next(
+            (
+                candidate
+                for candidate in prepared.delegation_teams
+                if candidate.team_id == arguments.team_id
+            ),
+            None,
+        )
+        if team is None:
+            return self._delegation_rejected(
+                argument_data, "Team is not active or not owned by this coordinator"
+            )
+        allowed_targets = {member.agent_id for member in team.members}
+        if arguments.target_agent_id not in allowed_targets:
+            return self._delegation_rejected(
+                argument_data, "Target Agent is not an allowed member of this Team"
+            )
+
+        async with self.session_factory() as session:
+            parent = await session.get(AgentRun, run_id)
+            if parent is None:
+                return self._delegation_rejected(argument_data, "Parent Run not found")
+            active_team = await session.get(Team, arguments.team_id)
+            source_agent = await session.get(Agent, parent.agent_id)
+            membership = await session.scalar(
+                select(TeamMember.id).where(
+                    TeamMember.team_id == arguments.team_id,
+                    TeamMember.agent_id == arguments.target_agent_id,
+                    TeamMember.role == "member",
+                )
+            )
+            if (
+                active_team is None
+                or active_team.status != "active"
+                or active_team.coordinator_agent_id != parent.agent_id
+                or source_agent is None
+                or not source_agent.is_coordinator
+                or membership is None
+            ):
+                return self._delegation_rejected(
+                    argument_data,
+                    "Team authorization changed before delegation execution",
+                )
+            root_run_id, ancestor_agents = await self._run_ancestry(session, parent)
+            if arguments.target_agent_id in ancestor_agents:
+                return self._delegation_rejected(
+                    argument_data, "Delegation loop detected in the Run ancestry"
+                )
+            child_depth = parent.depth + 1
+            if child_depth > self.settings.delegation_max_depth:
+                return self._delegation_rejected(
+                    argument_data, "Delegation depth limit exceeded"
+                )
+            call_count = await session.scalar(
+                select(func.count(Delegation.id)).where(
+                    Delegation.root_run_id == root_run_id
+                )
+            )
+            if (call_count or 0) >= self.settings.delegation_max_calls_per_root:
+                return self._delegation_rejected(
+                    argument_data, "Delegation call budget exhausted"
+                )
+            target_row = (
+                await session.execute(
+                    select(Agent, ProviderModel.model_name)
+                    .join(ProviderModel, ProviderModel.id == Agent.model_id)
+                    .where(Agent.id == arguments.target_agent_id)
+                )
+            ).one_or_none()
+            if target_row is None:
+                return self._delegation_rejected(
+                    argument_data, "Target Agent no longer exists"
+                )
+            target, model_name = target_row
+            if target.status != "active":
+                return self._delegation_rejected(
+                    argument_data, "Target Agent is disabled"
+                )
+
+            child_run_id = str(uuid4())
+            delegation_id = str(uuid4())
+            now = self._utc_now()
+            session.add(
+                AgentRun(
+                    id=child_run_id,
+                    session_id=parent.session_id,
+                    agent_id=target.id,
+                    parent_run_id=parent.id,
+                    depth=child_depth,
+                    provider_id=target.provider_id,
+                    model_id=target.model_id,
+                    model_name=model_name,
+                    status="queued",
+                    output_text="",
+                    cancel_requested=False,
+                )
+            )
+            session.add(
+                Delegation(
+                    id=delegation_id,
+                    parent_run_id=parent.id,
+                    root_run_id=root_run_id,
+                    child_run_id=child_run_id,
+                    team_id=team.team_id,
+                    source_agent_id=parent.agent_id,
+                    target_agent_id=target.id,
+                    task=arguments.task,
+                    status="running",
+                    result_text="",
+                    depth=child_depth,
+                    started_at=now,
+                )
+            )
+            await self._add_event(
+                session,
+                parent.id,
+                "delegation.started",
+                {
+                    "delegation_id": delegation_id,
+                    "parent_run_id": parent.id,
+                    "child_run_id": child_run_id,
+                    "team_id": team.team_id,
+                    "target_agent_id": target.id,
+                    "target_agent_name": target.name,
+                    "task": arguments.task[: self.settings.tool_event_preview_chars],
+                    "depth": child_depth,
+                },
+            )
+            await session.commit()
+
+        await self._execute(child_run_id, propagate_cancel=True)
+
+        async with self.session_factory() as session:
+            delegation = await session.get(Delegation, delegation_id)
+            child = await session.get(AgentRun, child_run_id)
+            if delegation is None or child is None:
+                return ToolExecutionResult(
+                    status="failed",
+                    arguments=argument_data,
+                    payload={"ok": False, "error": "Delegation audit disappeared"},
+                    error_message="Delegation audit disappeared",
+                )
+            now = self._utc_now()
+            delegation.status = child.status
+            delegation.result_text = child.output_text
+            delegation.error_message = child.error_message
+            delegation.finished_at = now
+            delegation.duration_ms = max(
+                0,
+                round((now - (delegation.started_at or now)).total_seconds() * 1000),
+            )
+            completed = child.status == "completed"
+            event_type = "delegation.completed" if completed else "delegation.failed"
+            target_name = await session.scalar(
+                select(Agent.name).where(Agent.id == delegation.target_agent_id)
+            )
+            await self._add_event(
+                session,
+                run_id,
+                event_type,
+                {
+                    "delegation_id": delegation.id,
+                    "child_run_id": child.id,
+                    "target_agent_id": delegation.target_agent_id,
+                    "target_agent_name": target_name or delegation.target_agent_id,
+                    "status": child.status,
+                    "duration_ms": delegation.duration_ms,
+                    **(
+                        {"message": child.error_message or "Delegated Run failed"}
+                        if not completed
+                        else {}
+                    ),
+                },
+            )
+            await session.commit()
+            if completed:
+                bounded_result = child.output_text[
+                    : self.settings.tool_result_max_chars
+                ]
+                return ToolExecutionResult(
+                    status="completed",
+                    arguments=argument_data,
+                    payload={
+                        "ok": True,
+                        "delegation_id": delegation.id,
+                        "target_agent_id": delegation.target_agent_id,
+                        "result": bounded_result,
+                        "truncated": len(child.output_text) > len(bounded_result),
+                    },
+                )
+            message = child.error_message or f"Delegated Run became {child.status}"
+            return ToolExecutionResult(
+                status="failed",
+                arguments=argument_data,
+                payload={
+                    "ok": False,
+                    "delegation_id": delegation.id,
+                    "status": child.status,
+                    "error": message,
+                },
+                error_message=message,
+            )
+
+    async def _delegation_teams(
+        self,
+        session: AsyncSession,
+        agent: Agent,
+    ) -> tuple[DelegationTeam, ...]:
+        if not agent.is_coordinator:
+            return ()
+        teams = (
+            await session.scalars(
+                select(Team)
+                .where(
+                    Team.coordinator_agent_id == agent.id,
+                    Team.status == "active",
+                )
+                .order_by(Team.created_at, Team.name)
+            )
+        ).all()
+        capabilities: list[DelegationTeam] = []
+        for team in teams:
+            members = (
+                await session.scalars(
+                    select(Agent)
+                    .join(TeamMember, TeamMember.agent_id == Agent.id)
+                    .where(
+                        TeamMember.team_id == team.id,
+                        TeamMember.role == "member",
+                        Agent.status == "active",
+                    )
+                    .order_by(TeamMember.created_at)
+                )
+            ).all()
+            if members:
+                capabilities.append(
+                    DelegationTeam(
+                        team_id=team.id,
+                        name=team.name,
+                        members=tuple(
+                            DelegationMember(
+                                agent_id=member.id,
+                                name=member.name,
+                                description=member.description,
+                            )
+                            for member in members
+                        ),
+                    )
+                )
+        return tuple(capabilities)
+
+    async def _run_ancestry(
+        self,
+        session: AsyncSession,
+        run: AgentRun,
+    ) -> tuple[str, set[str]]:
+        current = run
+        agent_ids = {current.agent_id}
+        while current.parent_run_id is not None:
+            parent = await session.get(AgentRun, current.parent_run_id)
+            if parent is None:
+                break
+            current = parent
+            agent_ids.add(current.agent_id)
+        return current.id, agent_ids
+
+    async def _assert_run_active(self, run_id: str) -> None:
+        async with self.session_factory() as session:
+            run = await session.get(AgentRun, run_id)
+            if (
+                run is None
+                or run.status in TERMINAL_RUN_STATUSES
+                or run.cancel_requested
+                or run.status == "cancelling"
+            ):
+                raise RunCancelledError(run_id)
+
+    @staticmethod
+    def _delegation_rejected(
+        arguments: dict[str, object], message: str
+    ) -> ToolExecutionResult:
+        return ToolExecutionResult(
+            status="rejected",
+            arguments=arguments,
+            payload={"ok": False, "status": "rejected", "error": message},
+            error_message=message,
+        )
 
     @staticmethod
     def _assistant_tool_calls(
@@ -499,6 +875,17 @@ class RunManager:
             run.finished_at = now
             run.duration_ms = self._duration_ms(run, now)
 
+            if run.parent_run_id is not None:
+                delegation = await session.scalar(
+                    select(Delegation).where(Delegation.child_run_id == run.id)
+                )
+                if delegation is not None:
+                    delegation.status = status
+                    delegation.result_text = run.output_text
+                    delegation.error_message = error_message
+                    delegation.finished_at = now
+                    delegation.duration_ms = self._duration_ms(run, now)
+
             unfinished_tool_calls = (
                 await session.scalars(
                     select(ToolCall).where(
@@ -535,7 +922,7 @@ class RunManager:
                     },
                 )
 
-            if run.output_text:
+            if run.output_text and run.parent_run_id is None:
                 assistant_exists = await session.scalar(
                     select(Message.id)
                     .where(Message.run_id == run.id, Message.role == "assistant")

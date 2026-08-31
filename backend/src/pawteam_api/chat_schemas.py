@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from pawteam_api.team_schemas import DelegationResponse
 from pawteam_api.tool_schemas import ToolCallResponse
 
 ChatStatus = Literal["active", "archived"]
@@ -75,6 +76,8 @@ class RunResponse(BaseModel):
     id: str
     session_id: str
     agent_id: str
+    parent_run_id: str | None
+    depth: int
     provider_id: str
     model_id: str
     model_name: str
@@ -95,3 +98,4 @@ class ChatDetailResponse(BaseModel):
     messages: list[MessageResponse]
     runs: list[RunResponse]
     tool_calls: list[ToolCallResponse]
+    delegations: list[DelegationResponse]
