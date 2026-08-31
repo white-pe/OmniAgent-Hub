@@ -167,7 +167,7 @@ export async function setChannelStatus(
 }
 
 export async function deleteChannel(channelId: string): Promise<void> {
-  const response = await fetch(`/api/channels/${channelId}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/channels/${channelId}`, { method: "DELETE" });
   if (!response.ok) throw new Error(await errorMessage(response));
 }
 
@@ -191,25 +191,4 @@ export async function retryChannelMessage(messageId: string): Promise<void> {
   await requestJson(`/api/channels/messages/${messageId}/retry`, { method: "POST" });
 }
 
-function jsonRequest(method: string, body: unknown): RequestInit {
-  return {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  };
-}
-
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (!response.ok) throw new Error(await errorMessage(response));
-  return response.json() as Promise<T>;
-}
-
-async function errorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { detail?: string };
-    return body.detail ?? `请求失败：HTTP ${response.status}`;
-  } catch {
-    return `请求失败：HTTP ${response.status}`;
-  }
-}
+import { apiFetch, errorMessage, jsonRequest, requestJson } from "./http";

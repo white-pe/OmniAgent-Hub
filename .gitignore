@@ -1,5 +1,6 @@
 .DS_Store
 .env
+.env.production
 .idea/
 .pytest_cache/
 .ruff_cache/
@@ -11,6 +12,7 @@ __pycache__/
 data/
 frontend/dist/
 frontend/node_modules/
+backups/
 frontend/*.tsbuildinfo
 
 # The parent QwenPaw repository ignores every uv.lock. PawTeam Lite keeps

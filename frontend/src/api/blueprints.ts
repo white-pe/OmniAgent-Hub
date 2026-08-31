@@ -1,4 +1,5 @@
 import type { Agent } from "./agents";
+import { jsonRequest, requestJson } from "./http";
 
 export type BlueprintTool =
   | "read_workspace_file"
@@ -68,33 +69,4 @@ export async function applyBlueprint(input: BlueprintApplyInput): Promise<Agent>
     "/api/agents/from-blueprint",
     jsonRequest("POST", input),
   );
-}
-
-function jsonRequest(method: string, body: unknown): RequestInit {
-  return {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  };
-}
-
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (!response.ok) throw new Error(await errorMessage(response));
-  return response.json() as Promise<T>;
-}
-
-async function errorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as {
-      detail?: string | Array<{ msg?: string }>;
-    };
-    if (typeof body.detail === "string") return body.detail;
-    if (Array.isArray(body.detail)) {
-      return body.detail.map((item) => item.msg ?? "字段校验失败").join("；");
-    }
-    return `请求失败：HTTP ${response.status}`;
-  } catch {
-    return `请求失败：HTTP ${response.status}`;
-  }
 }

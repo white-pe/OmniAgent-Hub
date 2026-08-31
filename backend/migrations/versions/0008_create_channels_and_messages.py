@@ -157,7 +157,9 @@ def downgrade() -> None:
         "external_conversation_id",
         "channel_id",
     ):
-        op.drop_index(op.f(f"ix_channel_messages_{column}"), table_name="channel_messages")
+        op.drop_index(
+            op.f(f"ix_channel_messages_{column}"), table_name="channel_messages"
+        )
     op.drop_table("channel_messages")
     op.drop_index(
         op.f("ix_external_conversations_chat_session_id"),

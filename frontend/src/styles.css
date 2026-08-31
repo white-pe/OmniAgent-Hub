@@ -16,6 +16,34 @@ body {
   min-height: 100vh;
 }
 
+.auth-loading,
+.auth-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+}
+
+.auth-shell {
+  padding: 24px;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  border: 1px solid rgb(255 122 26 / 24%);
+  box-shadow: 0 28px 80px rgb(87 50 21 / 14%);
+}
+
+.auth-card .ant-alert {
+  margin-bottom: 20px;
+}
+
+.hero-production {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
 .shell {
   width: min(1180px, calc(100% - 40px));
   margin: 0 auto;
@@ -448,6 +476,10 @@ body {
 @media (max-width: 700px) {
   .shell {
     padding: 52px 0;
+  }
+
+  .hero-production {
+    flex-direction: column;
   }
 
   .status-grid {

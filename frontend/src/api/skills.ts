@@ -56,23 +56,10 @@ export async function toggleSkill(agentId: string, name: string): Promise<Skill>
 }
 
 export async function deleteSkill(agentId: string, name: string): Promise<void> {
-  const response = await fetch(`/api/agents/${agentId}/skills/${name}`, {
+  const response = await apiFetch(`/api/agents/${agentId}/skills/${name}`, {
     method: "DELETE",
   });
   if (!response.ok) throw new Error(await errorMessage(response));
 }
 
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (!response.ok) throw new Error(await errorMessage(response));
-  return response.json() as Promise<T>;
-}
-
-async function errorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { detail?: string };
-    return body.detail ?? `请求失败：HTTP ${response.status}`;
-  } catch {
-    return `请求失败：HTTP ${response.status}`;
-  }
-}
+import { apiFetch, errorMessage, requestJson } from "./http";

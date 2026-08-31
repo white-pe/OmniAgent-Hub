@@ -63,7 +63,7 @@ export async function updateProvider(
 }
 
 export async function deleteProvider(providerId: string): Promise<void> {
-  const response = await fetch(`/api/providers/${providerId}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/providers/${providerId}`, { method: "DELETE" });
   if (!response.ok) throw new Error(await errorMessage(response));
 }
 
@@ -88,7 +88,7 @@ export async function streamProviderChat(
   },
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
-  const response = await fetch(`/api/providers/${providerId}/chat/stream`, {
+  const response = await apiFetch(`/api/providers/${providerId}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -126,17 +126,4 @@ function parseSseBlock(block: string): StreamEvent | null {
   return { event: eventName, data } as StreamEvent;
 }
 
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (!response.ok) throw new Error(await errorMessage(response));
-  return response.json() as Promise<T>;
-}
-
-async function errorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { detail?: string };
-    return body.detail ?? `请求失败：HTTP ${response.status}`;
-  } catch {
-    return `请求失败：HTTP ${response.status}`;
-  }
-}
+import { apiFetch, errorMessage, requestJson } from "./http";

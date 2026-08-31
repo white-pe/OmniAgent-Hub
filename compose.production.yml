@@ -1,0 +1,72 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      PAWTEAM_ENVIRONMENT: production
+      PAWTEAM_HOST: 0.0.0.0
+      PAWTEAM_DATABASE_URL: sqlite+aiosqlite:////app/data/app.db
+      PAWTEAM_DATA_DIR: /app/data
+      PAWTEAM_SECRETS_DIR: /app/data/secrets
+      PAWTEAM_WORKSPACES_DIR: /app/data/workspaces
+      PAWTEAM_ADMIN_PASSWORD: ${PAWTEAM_ADMIN_PASSWORD:?set PAWTEAM_ADMIN_PASSWORD}
+      PAWTEAM_AUTH_SECRET_KEY: ${PAWTEAM_AUTH_SECRET_KEY:?set PAWTEAM_AUTH_SECRET_KEY}
+      PAWTEAM_SECRET_KEY: ${PAWTEAM_SECRET_KEY:?set PAWTEAM_SECRET_KEY}
+      PAWTEAM_ALLOWED_HOSTS: '["${PAWTEAM_DOMAIN:?set PAWTEAM_DOMAIN}","localhost"]'
+      PAWTEAM_CORS_ORIGINS: '[]'
+    volumes:
+      - pawteam-data:/app/data
+      - ./backups:/app/backups
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/ready', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
+    environment:
+      PAWTEAM_DOMAIN: ${PAWTEAM_DOMAIN:?set PAWTEAM_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  pawteam-data:
+  caddy-data:
+  caddy-config:

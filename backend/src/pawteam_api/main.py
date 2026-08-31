@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from pawteam_api.api.router import api_router
 from pawteam_api.channels.dispatcher import ChannelDispatcher
@@ -15,6 +16,8 @@ from pawteam_api.config import Settings, get_settings
 from pawteam_api.database import create_database_engine, create_session_factory
 from pawteam_api.providers.client import OpenAICompatibleClient
 from pawteam_api.runtime.manager import RunManager
+from pawteam_api.security.auth import AuthManager
+from pawteam_api.security.middleware import ConsoleSecurityMiddleware
 from pawteam_api.security.secret_store import SecretStore
 from pawteam_api.tools.registry import ToolRegistry
 from pawteam_api.workspaces.store import WorkspaceStore
@@ -22,11 +25,14 @@ from pawteam_api.workspaces.store import WorkspaceStore
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
+    resolved_settings.validate_runtime()
+    auth_manager = AuthManager(resolved_settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         resolved_settings.ensure_directories()
         app.state.settings = resolved_settings
+        app.state.auth_manager = auth_manager
         app.state.db_engine = create_database_engine(resolved_settings)
         app.state.session_factory = create_session_factory(app.state.db_engine)
         app.state.secret_store = SecretStore(resolved_settings)
@@ -80,13 +86,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=resolved_settings.app_name,
         version=resolved_settings.version,
         lifespan=lifespan,
+        docs_url=None if resolved_settings.is_production else "/docs",
+        redoc_url=None if resolved_settings.is_production else "/redoc",
+        openapi_url=None if resolved_settings.is_production else "/openapi.json",
     )
+    application.add_middleware(ConsoleSecurityMiddleware, auth=auth_manager)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=resolved_settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+    application.add_middleware(
+        TrustedHostMiddleware, allowed_hosts=resolved_settings.allowed_hosts
     )
     application.include_router(api_router)
     return application

@@ -1,0 +1,9 @@
+{$PAWTEAM_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy frontend:80
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+}

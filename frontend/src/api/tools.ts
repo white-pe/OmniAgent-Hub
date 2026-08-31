@@ -19,16 +19,4 @@ export async function toggleTool(
   );
 }
 
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (!response.ok) {
-    try {
-      const body = (await response.json()) as { detail?: string };
-      throw new Error(body.detail ?? `请求失败：HTTP ${response.status}`);
-    } catch (reason) {
-      if (reason instanceof Error) throw reason;
-      throw new Error(`请求失败：HTTP ${response.status}`);
-    }
-  }
-  return response.json() as Promise<T>;
-}
+import { requestJson } from "./http";

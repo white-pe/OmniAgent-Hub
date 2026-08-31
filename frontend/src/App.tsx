@@ -1,4 +1,4 @@
-import { ConfigProvider, Tabs, Typography } from "antd";
+import { Button, ConfigProvider, Tabs, Typography, message } from "antd";
 import zhCN from "antd/locale/zh_CN";
 
 import AgentsPage from "./pages/AgentsPage";
@@ -7,21 +7,34 @@ import ChannelsPage from "./pages/ChannelsPage";
 import ProvidersPage from "./pages/ProvidersPage";
 import SystemHealth from "./pages/SystemHealth";
 import TeamsPage from "./pages/TeamsPage";
+import { logout } from "./api/auth";
 import "./styles.css";
 
 const { Paragraph, Text, Title } = Typography;
 
 export default function App() {
+  async function handleLogout() {
+    try {
+      await logout();
+      window.location.reload();
+    } catch (reason) {
+      message.error(reason instanceof Error ? reason.message : "退出失败");
+    }
+  }
+
   return (
     <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: "#ff7a1a" } }}>
       <main className="shell">
-        <section className="hero">
-          <Text className="eyebrow">PAWTEAM LITE · STAGE 7.2</Text>
-          <Title>一个会话内核，连接网页与企业微信。</Title>
-          <Paragraph>
-            网页和企业微信共享同一套 Chat、Run 与消息历史；统一控制台可以查看所有入口的会话，
-            并保留清晰的来源、权限和执行审计边界。
-          </Paragraph>
+        <section className="hero hero-production">
+          <div>
+            <Text className="eyebrow">PAWTEAM LITE · 1.0 PRODUCTION</Text>
+            <Title>一个会话内核，安全连接网页与企业微信。</Title>
+            <Paragraph>
+              网页和企业微信共享同一套 Chat、Run 与消息历史；统一控制台可以查看所有入口的会话，
+              并保留清晰的来源、权限和执行审计边界。
+            </Paragraph>
+          </div>
+          <Button onClick={handleLogout}>退出登录</Button>
         </section>
         <Tabs
           defaultActiveKey="chat"

@@ -1,6 +1,6 @@
 # PawTeam Lite
 
-PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前完成到**阶段 7.2：跨 Channel 统一会话控制台**。
+PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前已完成 **1.0：生产安全与单机上线闭环**。
 
 ## 当前能力
 
@@ -14,6 +14,7 @@ PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前完成
 - 阶段 7：企业微信加密回调、外部会话映射、主动回复和投递审计；
 - 阶段 7.1：企业微信智能机器人扫码授权、WebSocket 长连接、断线重连与无公网回调接入；
 - 阶段 7.2：网页与企业微信统一会话列表、来源元数据、自动刷新和外部会话只读审计；
+- 阶段 8：单管理员登录、CSRF、生产配置校验、Caddy HTTPS、健康检查、备份恢复与 CI；
 - `AGENTS.md / SOUL.md / PROFILE.md / MEMORY.md` 可视化编辑；
 - Agent 启停、协调 Agent 标记和配置版本控制；
 - 数据库与文件操作的补偿事务；
@@ -58,7 +59,7 @@ make dev-frontend
 - `Backend Tests`：pytest；
 - `Frontend Dev`：Vite 开发服务器。
 
-进入阶段 7.2 后，在 PyCharm Terminal 执行：
+进入阶段 8 后，在 PyCharm Terminal 执行：
 
 ```bash
 uv sync
@@ -114,6 +115,17 @@ uv run alembic current
 docker compose config
 ```
 
+生产环境使用独立编排：
+
+```bash
+cp .env.production.example .env.production
+# 填写域名和三个生产秘密后
+make prod-config
+make prod-up
+```
+
+生产版仅开放 Caddy 的 80/443，由 Caddy 自动管理 HTTPS；Frontend 与 Backend 保持在 Compose 内网。完整的域名、密钥、备份、恢复和更新流程见阶段 8 文档。
+
 阶段文档：
 
 - [阶段 0：工程地基](docs/stage-0-foundation.zh.md)
@@ -126,4 +138,5 @@ docker compose config
 - [阶段 7：企业微信 Channel](docs/stage-7-wecom-channel.zh.md)
 - [阶段 7.1：企业微信智能机器人扫码与长连接](docs/stage-7.1-wecom-bot-qr.zh.md)
 - [阶段 7.2：跨 Channel 统一会话控制台](docs/stage-7.2-unified-channel-chat.zh.md)
+- [阶段 8：生产安全与单机上线](docs/stage-8-production-deployment.zh.md)
 - [Git 阶段复盘](docs/git-stage-workflow.zh.md)

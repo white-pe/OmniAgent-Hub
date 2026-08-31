@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from pawteam_api.api.routes.agents import router as agents_router
+from pawteam_api.api.routes.auth import router as auth_router
 from pawteam_api.api.routes.blueprints import router as blueprints_router
 from pawteam_api.api.routes.channels import router as channels_router
 from pawteam_api.api.routes.chats import router as chats_router
@@ -15,6 +16,7 @@ from pawteam_api.api.routes.tools import router as tools_router
 from pawteam_api.api.routes.wecom_webhooks import router as wecom_webhooks_router
 
 api_router = APIRouter(prefix="/api")
+api_router.include_router(auth_router)
 api_router.include_router(health_router)
 api_router.include_router(providers_router)
 api_router.include_router(blueprints_router)

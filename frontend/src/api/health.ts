@@ -7,9 +7,10 @@ export interface HealthResponse {
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  const response = await fetch("/api/health");
+  const response = await apiFetch("/api/health");
   if (!response.ok) {
     throw new Error(`健康检查失败：HTTP ${response.status}`);
   }
   return response.json() as Promise<HealthResponse>;
 }
+import { apiFetch } from "./http";

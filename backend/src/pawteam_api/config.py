@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "PawTeam Lite"
-    version: str = "0.8.2"
+    version: str = "1.0.0"
     environment: str = "development"
     host: str = "127.0.0.1"
     port: int = 8000
@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     secrets_dir: Path = Path("data/secrets")
     workspaces_dir: Path = Path("data/workspaces")
     secret_key: SecretStr | None = None
+    admin_password: SecretStr | None = None
+    auth_secret_key: SecretStr | None = None
+    auth_session_hours: int = 12
+    allowed_hosts: list[str] = Field(
+        default_factory=lambda: ["localhost", "127.0.0.1", "testserver"]
+    )
     provider_timeout_seconds: float = 60.0
     blueprint_ttl_minutes: int = 1440
     run_timeout_seconds: float = 120.0
@@ -64,6 +70,37 @@ class Settings(BaseSettings):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.secrets_dir.mkdir(parents=True, exist_ok=True)
         self.workspaces_dir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.casefold() == "production"
+
+    @property
+    def auth_enabled(self) -> bool:
+        return self.admin_password is not None
+
+    def validate_runtime(self) -> None:
+        """Fail closed when a production deployment omitted a security secret."""
+        if not self.is_production:
+            return
+
+        missing: list[str] = []
+        if self.admin_password is None or len(
+            self.admin_password.get_secret_value()
+        ) < 12:
+            missing.append("PAWTEAM_ADMIN_PASSWORD (at least 12 characters)")
+        if self.auth_secret_key is None or len(
+            self.auth_secret_key.get_secret_value()
+        ) < 32:
+            missing.append("PAWTEAM_AUTH_SECRET_KEY (at least 32 characters)")
+        if self.secret_key is None:
+            missing.append("PAWTEAM_SECRET_KEY (a Fernet key)")
+        if not self.allowed_hosts or "*" in self.allowed_hosts:
+            missing.append("PAWTEAM_ALLOWED_HOSTS (must not contain '*')")
+        if missing:
+            raise RuntimeError(
+                "Unsafe production configuration: " + "; ".join(missing)
+            )
 
 
 @lru_cache
