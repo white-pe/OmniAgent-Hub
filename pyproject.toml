@@ -1,6 +1,6 @@
 [project]
 name = "pawteam-lite"
-version = "0.4.0"
+version = "0.5.0"
 description = "A small, explainable multi-agent platform built step by step."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"

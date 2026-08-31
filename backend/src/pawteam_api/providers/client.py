@@ -107,6 +107,20 @@ class OpenAICompatibleClient:
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
+        async for content in self.stream_messages(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+        ):
+            yield content
+
+    async def stream_messages(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        temperature: float,
+    ) -> AsyncIterator[str]:
         payload = {
             "model": model,
             "messages": messages,

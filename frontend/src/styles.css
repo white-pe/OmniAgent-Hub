@@ -61,6 +61,134 @@ body {
   flex: 1;
 }
 
+.chat-console {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+.chat-sidebar,
+.chat-main {
+  min-height: 680px;
+  border: 1px solid rgb(36 29 23 / 9%);
+}
+
+.chat-agent-select {
+  margin: 9px 0 14px;
+}
+
+.chat-session-list {
+  margin-top: 16px;
+}
+
+.chat-session {
+  margin-bottom: 6px;
+  padding: 12px !important;
+  border: 0 !important;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.chat-session:hover,
+.chat-session.active {
+  background: #fff3e9;
+}
+
+.chat-session > div,
+.chat-session .ant-typography {
+  display: block;
+}
+
+.chat-session .ant-typography + .ant-typography {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.chat-main .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 630px;
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eee8e1;
+}
+
+.chat-header h4 {
+  margin: 0 0 4px;
+}
+
+.message-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 330px;
+  max-height: 560px;
+  padding: 20px 4px;
+  overflow-y: auto;
+}
+
+.message-bubble {
+  width: min(82%, 680px);
+  padding: 14px 16px;
+  border-radius: 16px;
+}
+
+.message-bubble.user {
+  align-self: flex-end;
+  background: #fff0e3;
+}
+
+.message-bubble.assistant {
+  align-self: flex-start;
+  border: 1px solid #ece6df;
+  background: #fff;
+}
+
+.message-bubble.streaming {
+  box-shadow: 0 10px 35px rgb(70 46 26 / 8%);
+}
+
+.message-bubble .ant-typography {
+  margin: 8px 0 0;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.chat-composer {
+  padding-top: 16px;
+  border-top: 1px solid #eee8e1;
+}
+
+.composer-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.run-audit {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #faf8f5;
+}
+
+.run-row {
+  display: grid;
+  grid-template-columns: 90px 100px 1fr 90px;
+  gap: 10px;
+  align-items: center;
+}
+
 .agent-form-card .ant-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -224,5 +352,32 @@ body {
   .blueprint-grid {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+
+  .chat-console {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-sidebar,
+  .chat-main {
+    min-height: auto;
+  }
+
+  .message-bubble {
+    width: 88%;
+  }
+
+  .composer-actions,
+  .chat-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .run-row {
+    grid-template-columns: 80px 90px 1fr;
+  }
+
+  .run-row > :last-child {
+    display: none;
   }
 }

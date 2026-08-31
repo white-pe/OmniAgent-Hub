@@ -136,6 +136,12 @@ class AgentService:
         try:
             await self.session.delete(agent)
             await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            self.workspace_store.restore_delete(original, trashed)
+            raise AgentConflictError(
+                "Agent has chat history and cannot be deleted"
+            ) from exc
         except Exception:
             await self.session.rollback()
             self.workspace_store.restore_delete(original, trashed)

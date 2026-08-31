@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "PawTeam Lite"
-    version: str = "0.4.0"
+    version: str = "0.5.0"
     environment: str = "development"
     host: str = "127.0.0.1"
     port: int = 8000
@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     secret_key: SecretStr | None = None
     provider_timeout_seconds: float = 60.0
     blueprint_ttl_minutes: int = 1440
+    run_timeout_seconds: float = 120.0
+    run_event_poll_interval_seconds: float = 0.15
+    runtime_history_messages: int = 30
+    runtime_history_chars: int = 40_000
+    runtime_workspace_file_chars: int = 15_000
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",

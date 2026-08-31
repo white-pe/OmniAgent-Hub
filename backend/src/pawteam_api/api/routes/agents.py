@@ -143,7 +143,7 @@ async def delete_agent(
 ) -> Response:
     try:
         await agent_service(request, session).delete(agent_id)
-    except (AgentNotFoundError, WorkspaceError) as error:
+    except (AgentNotFoundError, AgentConflictError, WorkspaceError) as error:
         raise translate_agent_error(error) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

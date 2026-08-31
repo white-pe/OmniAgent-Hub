@@ -10,6 +10,7 @@ from pawteam_api.api.router import api_router
 from pawteam_api.config import Settings, get_settings
 from pawteam_api.database import create_database_engine, create_session_factory
 from pawteam_api.providers.client import OpenAICompatibleClient
+from pawteam_api.runtime.manager import RunManager
 from pawteam_api.security.secret_store import SecretStore
 from pawteam_api.workspaces.store import WorkspaceStore
 
@@ -26,7 +27,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.secret_store = SecretStore(resolved_settings)
         app.state.workspace_store = WorkspaceStore(resolved_settings)
         app.state.provider_client_factory = OpenAICompatibleClient
+        app.state.run_manager = RunManager(
+            session_factory=app.state.session_factory,
+            settings=resolved_settings,
+            secret_store=app.state.secret_store,
+            workspace_store=app.state.workspace_store,
+            provider_client_factory=lambda base_url, api_key, timeout: (
+                app.state.provider_client_factory(base_url, api_key, timeout)
+            ),
+        )
+        await app.state.run_manager.recover_interrupted_runs()
         yield
+        await app.state.run_manager.shutdown()
         await app.state.db_engine.dispose()
 
     application = FastAPI(

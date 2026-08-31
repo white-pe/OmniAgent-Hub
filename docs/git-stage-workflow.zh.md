@@ -8,7 +8,8 @@ codex/stage-0-foundation     阶段 0 工程地基快照
 codex/stage-1-provider       阶段 1 Provider 快照
 codex/stage-2-agent          阶段 2 Agent 与 Workspace 快照
 codex/stage-3-blueprint      阶段 3 自然语言 Blueprint 快照
-codex/stage-4-runtime        未来阶段 4
+codex/stage-4-runtime        阶段 4 会话、Run 与 SSE 快照
+codex/stage-5-tools-skills   未来阶段 5
 ```
 
 每个阶段分支代表“完成该阶段后，项目应该是什么样”。下一阶段从上一阶段分支创建，形成线性提交历史。
@@ -69,4 +70,11 @@ git switch -c codex/stage-3-blueprint
 ```bash
 git switch codex/stage-3-blueprint
 git switch -c codex/stage-4-runtime
+```
+
+完成阶段 4 后，阶段 5 从阶段 4 创建：
+
+```bash
+git switch codex/stage-4-runtime
+git switch -c codex/stage-5-tools-skills
 ```

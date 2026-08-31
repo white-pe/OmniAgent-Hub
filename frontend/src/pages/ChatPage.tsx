@@ -1,0 +1,408 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  Empty,
+  List,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  Typography,
+  message,
+} from "antd";
+import { Input } from "antd";
+
+import { listAgents, type Agent } from "../api/agents";
+import {
+  cancelRun,
+  createChat,
+  createRun,
+  getChat,
+  listChats,
+  type AgentRun,
+  type ChatDetail,
+  type ChatSession,
+  type RunStatus,
+} from "../api/chats";
+
+const { Paragraph, Text, Title } = Typography;
+const { TextArea } = Input;
+const ACTIVE_STATUSES: RunStatus[] = ["queued", "running", "cancelling"];
+
+export default function ChatPage() {
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agentId, setAgentId] = useState<string>();
+  const [chats, setChats] = useState<ChatSession[]>([]);
+  const [chatId, setChatId] = useState<string>();
+  const [detail, setDetail] = useState<ChatDetail>();
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [input, setInput] = useState("");
+  const [activeRun, setActiveRun] = useState<AgentRun>();
+  const [liveOutput, setLiveOutput] = useState("");
+  const [streamState, setStreamState] = useState("未连接");
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    const loadAgents = async () => {
+      try {
+        const enabled = (await listAgents()).filter(
+          (agent) => agent.status === "active",
+        );
+        setAgents(enabled);
+        setAgentId((current) => current ?? enabled[0]?.id);
+      } catch (reason) {
+        void message.error(errorText(reason));
+      } finally {
+        setLoading(false);
+      }
+    };
+    void loadAgents();
+    return () => eventSourceRef.current?.close();
+  }, []);
+
+  useEffect(() => {
+    eventSourceRef.current?.close();
+    setActiveRun(undefined);
+    setLiveOutput("");
+    setDetail(undefined);
+    if (!agentId) {
+      setChats([]);
+      setChatId(undefined);
+      return;
+    }
+    const load = async () => {
+      setLoading(true);
+      try {
+        const nextChats = await listChats(agentId);
+        setChats(nextChats);
+        setChatId((current) =>
+          nextChats.some((chat) => chat.id === current)
+            ? current
+            : nextChats[0]?.id,
+        );
+      } catch (reason) {
+        void message.error(errorText(reason));
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
+  }, [agentId]);
+
+  useEffect(() => {
+    eventSourceRef.current?.close();
+    setActiveRun(undefined);
+    setLiveOutput("");
+    if (!chatId) {
+      setDetail(undefined);
+      return;
+    }
+    void loadDetail(chatId, true);
+  }, [chatId]);
+
+  const refreshChats = async (selectedAgentId = agentId) => {
+    if (!selectedAgentId) return;
+    setChats(await listChats(selectedAgentId));
+  };
+
+  const loadDetail = async (selectedChatId: string, reconnect = false) => {
+    try {
+      const nextDetail = await getChat(selectedChatId);
+      setDetail(nextDetail);
+      if (reconnect) {
+        const running = [...nextDetail.runs]
+          .reverse()
+          .find((run) => ACTIVE_STATUSES.includes(run.status));
+        if (running) connectToRun(running, selectedChatId);
+      }
+    } catch (reason) {
+      void message.error(errorText(reason));
+    }
+  };
+
+  const connectToRun = (run: AgentRun, selectedChatId: string) => {
+    eventSourceRef.current?.close();
+    setActiveRun(run);
+    setLiveOutput("");
+    setStreamState("正在连接 SSE");
+    const source = new EventSource(`/api/runs/${run.id}/events`);
+    eventSourceRef.current = source;
+
+    source.addEventListener("run.started", () => {
+      setStreamState("模型正在生成");
+      setActiveRun((current) =>
+        current ? { ...current, status: "running" } : current,
+      );
+    });
+    source.addEventListener("run.delta", (event) => {
+      const data = parseEvent(event);
+      if (typeof data.content === "string") {
+        setLiveOutput((current) => current + data.content);
+      }
+    });
+    source.addEventListener("run.completed", () => {
+      finishStream(source, selectedChatId, "已完成");
+    });
+    source.addEventListener("run.cancelled", () => {
+      finishStream(source, selectedChatId, "已取消");
+    });
+    source.addEventListener("run.failed", (event) => {
+      const data = parseEvent(event);
+      if (typeof data.message === "string") void message.error(data.message);
+      finishStream(source, selectedChatId, "运行失败");
+    });
+    source.onerror = () => {
+      if (source.readyState !== EventSource.CLOSED) setStreamState("SSE 断线重连中");
+    };
+  };
+
+  const finishStream = (
+    source: EventSource,
+    selectedChatId: string,
+    state: string,
+  ) => {
+    source.close();
+    if (eventSourceRef.current === source) eventSourceRef.current = null;
+    setStreamState(state);
+    setActiveRun(undefined);
+    setLiveOutput("");
+    void loadDetail(selectedChatId);
+    void refreshChats();
+  };
+
+  const addChat = async () => {
+    if (!agentId) return;
+    setCreating(true);
+    try {
+      const chat = await createChat(agentId);
+      await refreshChats(agentId);
+      setChatId(chat.id);
+      void message.success("新会话已创建");
+    } catch (reason) {
+      void message.error(errorText(reason));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const send = async () => {
+    const content = input.trim();
+    if (!chatId || !content || activeRun) return;
+    setSending(true);
+    try {
+      const run = await createRun(chatId, content);
+      setInput("");
+      await loadDetail(chatId);
+      connectToRun(run, chatId);
+      await refreshChats();
+    } catch (reason) {
+      void message.error(errorText(reason));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const stop = async () => {
+    if (!activeRun) return;
+    try {
+      setActiveRun({ ...activeRun, status: "cancelling" });
+      setStreamState("正在请求停止");
+      await cancelRun(activeRun.id);
+    } catch (reason) {
+      void message.error(errorText(reason));
+    }
+  };
+
+  if (!agents.length && !loading) {
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        message="没有可用 Agent"
+        description="请先在 Blueprint 与 Agent 页面创建并启用一个 Agent。"
+      />
+    );
+  }
+
+  return (
+    <div className="chat-console">
+      <Card className="chat-sidebar" title="Console 会话">
+        <Text type="secondary">当前 Agent</Text>
+        <Select
+          className="full-width chat-agent-select"
+          value={agentId}
+          loading={loading}
+          options={agents.map((agent) => ({ value: agent.id, label: agent.name }))}
+          onChange={setAgentId}
+        />
+        <Button
+          className="full-width"
+          type="primary"
+          loading={creating}
+          disabled={!agentId}
+          onClick={() => void addChat()}
+        >
+          新建会话
+        </Button>
+        <List
+          className="chat-session-list"
+          loading={loading}
+          locale={{ emptyText: "这个 Agent 还没有会话" }}
+          dataSource={chats}
+          renderItem={(chat) => (
+            <List.Item
+              className={chat.id === chatId ? "chat-session active" : "chat-session"}
+              onClick={() => setChatId(chat.id)}
+            >
+              <div>
+                <Text strong={chat.id === chatId}>{chat.title}</Text>
+                <Text type="secondary">{formatTime(chat.updated_at)}</Text>
+              </div>
+            </List.Item>
+          )}
+        />
+      </Card>
+
+      <Card className="chat-main">
+        {!chatId ? (
+          <Empty description="新建或选择一个会话后开始交流" />
+        ) : !detail ? (
+          <Spin />
+        ) : (
+          <>
+            <header className="chat-header">
+              <div>
+                <Title level={4}>{detail.session.title}</Title>
+                <Text type="secondary">
+                  {detail.session.agent_name} · console · 历史已持久化
+                </Text>
+              </div>
+              <Space wrap>
+                {activeRun && <RunStatusTag status={activeRun.status} />}
+                <Tag>{streamState}</Tag>
+              </Space>
+            </header>
+
+            <div className="message-list">
+              {!detail.messages.length && !liveOutput ? (
+                <Empty description="发送第一条消息，Agent 会读取自己的 Workspace" />
+              ) : (
+                detail.messages.map((item) => (
+                  <article key={item.id} className={`message-bubble ${item.role}`}>
+                    <Space>
+                      <Text strong>{item.role === "user" ? "你" : detail.session.agent_name}</Text>
+                      {item.status === "partial" && <Tag color="orange">部分回答</Tag>}
+                    </Space>
+                    <Paragraph>{item.content}</Paragraph>
+                  </article>
+                ))
+              )}
+              {activeRun && (
+                <article className="message-bubble assistant streaming">
+                  <Space>
+                    <Text strong>{detail.session.agent_name}</Text>
+                    <Tag color="processing">生成中</Tag>
+                  </Space>
+                  <Paragraph>{liveOutput || "正在读取人格与会话历史……"}</Paragraph>
+                </article>
+              )}
+            </div>
+
+            <div className="chat-composer">
+              <TextArea
+                value={input}
+                disabled={Boolean(activeRun)}
+                placeholder="输入消息；⌘/Ctrl + Enter 发送"
+                autoSize={{ minRows: 3, maxRows: 8 }}
+                maxLength={20_000}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                    event.preventDefault();
+                    void send();
+                  }
+                }}
+              />
+              <div className="composer-actions">
+                <Text type="secondary">
+                  {activeRun
+                    ? `Run ${activeRun.id} · ${activeRun.model_name}`
+                    : "刷新页面后仍可恢复消息和未结束 Run"}
+                </Text>
+                <Space>
+                  {activeRun && (
+                    <Button danger onClick={() => void stop()}>
+                      停止生成
+                    </Button>
+                  )}
+                  <Button
+                    type="primary"
+                    loading={sending}
+                    disabled={!input.trim() || Boolean(activeRun)}
+                    onClick={() => void send()}
+                  >
+                    发送
+                  </Button>
+                </Space>
+              </div>
+            </div>
+
+            {!!detail.runs.length && (
+              <div className="run-audit">
+                <Text strong>最近 Run</Text>
+                {[...detail.runs].reverse().slice(0, 4).map((run) => (
+                  <div key={run.id} className="run-row">
+                    <Text code>{run.id.slice(0, 8)}</Text>
+                    <RunStatusTag status={run.status} />
+                    <Text>{run.model_name}</Text>
+                    <Text type="secondary">
+                      {run.duration_ms === null ? "—" : `${run.duration_ms} ms`}
+                    </Text>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function RunStatusTag({ status }: { status: RunStatus }) {
+  const color: Record<RunStatus, string> = {
+    queued: "default",
+    running: "processing",
+    cancelling: "warning",
+    completed: "success",
+    failed: "error",
+    cancelled: "orange",
+  };
+  return <Tag color={color[status]}>{status}</Tag>;
+}
+
+function parseEvent(event: Event): Record<string, unknown> {
+  if (!(event instanceof MessageEvent)) return {};
+  try {
+    return JSON.parse(String(event.data)) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function errorText(reason: unknown): string {
+  return reason instanceof Error ? reason.message : "发生未知错误";
+}
