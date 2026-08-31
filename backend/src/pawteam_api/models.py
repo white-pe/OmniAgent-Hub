@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     UniqueConstraint,
     func,
@@ -89,3 +90,38 @@ class ProviderModel(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     provider: Mapped[Provider] = relationship(back_populates="models")
+
+
+class Agent(Base):
+    """Agent metadata; prompt files live in its isolated Workspace."""
+
+    __tablename__ = "agents"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    workspace_path: Mapped[str] = mapped_column(
+        String(500), unique=True, nullable=False
+    )
+    provider_id: Mapped[str] = mapped_column(
+        ForeignKey("providers.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    model_id: Mapped[str] = mapped_column(
+        ForeignKey("provider_models.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    is_coordinator: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

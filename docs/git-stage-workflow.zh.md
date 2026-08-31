@@ -6,7 +6,8 @@
 main                         当前最新已验收阶段
 codex/stage-0-foundation     阶段 0 工程地基快照
 codex/stage-1-provider       阶段 1 Provider 快照
-codex/stage-2-agent          未来阶段 2
+codex/stage-2-agent          阶段 2 Agent 与 Workspace 快照
+codex/stage-3-blueprint      未来阶段 3
 ```
 
 每个阶段分支代表“完成该阶段后，项目应该是什么样”。下一阶段从上一阶段分支创建，形成线性提交历史。
@@ -53,11 +54,11 @@ git diff codex/stage-0-foundation..codex/stage-1-provider
 
 ## 开始下一阶段
 
-完成阶段 1 验收后，从阶段 1 创建阶段 2：
+完成阶段 2 验收后，从阶段 2 创建阶段 3：
 
 ```bash
-git switch codex/stage-1-provider
-git switch -c codex/stage-2-agent
+git switch codex/stage-2-agent
+git switch -c codex/stage-3-blueprint
 ```
 
 阶段开发期间只在新分支修改。验收完成后提交，并让 `main` 快进到新阶段。不要把 API Key、`.env`、`data/`、`.venv` 或 `node_modules` 提交到任何分支。

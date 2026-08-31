@@ -41,7 +41,10 @@ class ProviderCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def normalize_name(cls, value: str) -> str:
-        return value.strip()
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Provider name cannot be empty")
+        return normalized
 
     @field_validator("base_url")
     @classmethod
@@ -79,7 +82,12 @@ class ProviderUpdate(BaseModel):
     @field_validator("name")
     @classmethod
     def normalize_optional_name(cls, value: str | None) -> str | None:
-        return value.strip() if value is not None else None
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Provider name cannot be empty")
+        return normalized
 
     @field_validator("base_url")
     @classmethod

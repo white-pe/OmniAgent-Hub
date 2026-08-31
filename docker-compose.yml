@@ -9,6 +9,7 @@ services:
       PAWTEAM_DATABASE_URL: sqlite+aiosqlite:////app/data/app.db
       PAWTEAM_DATA_DIR: /app/data
       PAWTEAM_SECRETS_DIR: /app/data/secrets
+      PAWTEAM_WORKSPACES_DIR: /app/data/workspaces
     volumes:
       - pawteam-data:/app/data
     expose:

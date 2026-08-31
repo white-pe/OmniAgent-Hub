@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from pawteam_api.models import Provider, ProviderModel
+from pawteam_api.models import Agent, Provider, ProviderModel
 from pawteam_api.provider_schemas import (
     ProviderCreate,
     ProviderResponse,
@@ -114,6 +114,15 @@ class ProviderService:
                 model.capabilities_json = model_input.capabilities
                 model.enabled = model_input.enabled
                 next_models.append(model)
+            removed_ids = [model.id for model in existing_models.values()]
+            if removed_ids:
+                agent_using_model = await self.session.scalar(
+                    select(Agent.id).where(Agent.model_id.in_(removed_ids)).limit(1)
+                )
+                if agent_using_model is not None:
+                    raise ProviderConflictError(
+                        "Cannot remove a Model that is used by an Agent"
+                    )
             for removed_model in existing_models.values():
                 await self.session.delete(removed_model)
             provider.models = next_models
@@ -140,7 +149,13 @@ class ProviderService:
         provider = await self._entity(provider_id)
         secret_reference = provider.api_key_ref
         await self.session.delete(provider)
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise ProviderConflictError(
+                "Provider is used by an Agent and cannot be deleted"
+            ) from exc
         self.secret_store.delete(secret_reference)
 
     async def runtime(

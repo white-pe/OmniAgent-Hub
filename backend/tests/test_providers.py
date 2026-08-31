@@ -49,6 +49,7 @@ def test_provider_lifecycle_keeps_api_key_out_of_database_response(
         environment="test",
         data_dir=tmp_path,
         secrets_dir=secrets_path,
+        workspaces_dir=tmp_path / "workspaces",
         database_url=f"sqlite+aiosqlite:///{database_path}",
     )
     asyncio.run(create_test_schema(settings))
@@ -135,6 +136,7 @@ def test_duplicate_provider_name_is_rejected(tmp_path: Path) -> None:
         environment="test",
         data_dir=tmp_path,
         secrets_dir=tmp_path / "secrets",
+        workspaces_dir=tmp_path / "workspaces",
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
     )
     asyncio.run(create_test_schema(settings))

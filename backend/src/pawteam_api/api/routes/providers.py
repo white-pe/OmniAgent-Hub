@@ -104,7 +104,7 @@ async def delete_provider(
 ) -> Response:
     try:
         await provider_service(request, session).delete(provider_id)
-    except ProviderNotFoundError as error:
+    except (ProviderNotFoundError, ProviderConflictError) as error:
         raise translate_service_error(error) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

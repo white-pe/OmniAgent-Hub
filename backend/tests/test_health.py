@@ -11,6 +11,7 @@ def test_health_reports_database_ready(tmp_path: Path) -> None:
         environment="test",
         data_dir=tmp_path,
         secrets_dir=tmp_path / "secrets",
+        workspaces_dir=tmp_path / "workspaces",
         database_url=f"sqlite+aiosqlite:///{database_path}",
     )
 
@@ -20,7 +21,7 @@ def test_health_reports_database_ready(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json() == {
         "name": "PawTeam Lite",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "environment": "test",
         "status": "ok",
         "database": "ok",

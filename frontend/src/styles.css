@@ -31,6 +31,46 @@ body {
   gap: 22px;
 }
 
+.agent-layout {
+  display: grid;
+  gap: 22px;
+}
+
+.agent-form-card .ant-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+}
+
+.agent-form-card .ant-form-item:nth-child(2),
+.agent-form-card .ant-form-item:nth-last-child(-n + 2) {
+  grid-column: 1 / -1;
+}
+
+.agent-card {
+  height: 100%;
+  border: 1px solid rgb(36 29 23 / 9%);
+}
+
+.agent-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.workspace-editor textarea {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  line-height: 1.7;
+}
+
 .provider-form-card .ant-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -148,6 +188,10 @@ body {
   }
 
   .provider-form-card .ant-form {
+    display: block;
+  }
+
+  .agent-form-card .ant-form {
     display: block;
   }
 }

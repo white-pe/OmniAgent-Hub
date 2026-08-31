@@ -22,13 +22,14 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "PawTeam Lite"
-    version: str = "0.2.0"
+    version: str = "0.3.0"
     environment: str = "development"
     host: str = "127.0.0.1"
     port: int = 8000
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
     data_dir: Path = Path("data")
     secrets_dir: Path = Path("data/secrets")
+    workspaces_dir: Path = Path("data/workspaces")
     secret_key: SecretStr | None = None
     provider_timeout_seconds: float = 60.0
     cors_origins: list[str] = Field(
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     def ensure_directories(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.secrets_dir.mkdir(parents=True, exist_ok=True)
+        self.workspaces_dir.mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache
