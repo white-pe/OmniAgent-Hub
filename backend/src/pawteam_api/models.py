@@ -125,3 +125,37 @@ class Agent(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class AgentBlueprintDraft(Base):
+    """Reviewable LLM output; applying it is a separate explicit action."""
+
+    __tablename__ = "agent_blueprint_drafts"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    request_text: Mapped[str] = mapped_column(String(4000), nullable=False)
+    source_provider_id: Mapped[str] = mapped_column(
+        ForeignKey("providers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_model_id: Mapped[str] = mapped_column(
+        ForeignKey("provider_models.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    blueprint_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    warnings_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    applied_agent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

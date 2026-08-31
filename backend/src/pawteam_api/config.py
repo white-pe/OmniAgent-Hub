@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "PawTeam Lite"
-    version: str = "0.3.0"
+    version: str = "0.4.0"
     environment: str = "development"
     host: str = "127.0.0.1"
     port: int = 8000
@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     workspaces_dir: Path = Path("data/workspaces")
     secret_key: SecretStr | None = None
     provider_timeout_seconds: float = 60.0
+    blueprint_ttl_minutes: int = 1440
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",

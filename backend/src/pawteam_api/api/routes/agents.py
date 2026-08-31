@@ -19,6 +19,15 @@ from pawteam_api.agents.service import (
     AgentService,
 )
 from pawteam_api.api.dependencies import get_database_session
+from pawteam_api.api.routes.blueprints import (
+    blueprint_service,
+    translate_blueprint_error,
+)
+from pawteam_api.blueprint_schemas import BlueprintApplyRequest
+from pawteam_api.blueprints.service import (
+    BlueprintConflictError,
+    BlueprintNotFoundError,
+)
 from pawteam_api.workspaces.store import (
     WorkspaceError,
     WorkspaceFileNotAllowedError,
@@ -61,6 +70,34 @@ async def create_agent(
         return await agent_service(request, session).create(payload)
     except (AgentConflictError, AgentConfigurationError, WorkspaceError) as error:
         raise translate_agent_error(error) from error
+
+
+@router.post("/from-blueprint", response_model=AgentResponse)
+async def create_agent_from_blueprint(
+    payload: BlueprintApplyRequest,
+    request: Request,
+    session: SessionDependency,
+) -> AgentResponse:
+    try:
+        return await blueprint_service(request, session).apply(
+            draft_id=payload.draft_id,
+            blueprint=payload.blueprint,
+            provider_id=payload.provider_id,
+            model_id=payload.model_id,
+        )
+    except (
+        BlueprintNotFoundError,
+        BlueprintConflictError,
+        AgentConflictError,
+        AgentConfigurationError,
+        WorkspaceError,
+    ) as error:
+        if isinstance(
+            error,
+            (AgentConflictError, AgentConfigurationError, WorkspaceError),
+        ):
+            raise translate_agent_error(error) from error
+        raise translate_blueprint_error(error) from error
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)

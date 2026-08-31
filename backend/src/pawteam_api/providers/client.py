@@ -51,6 +51,50 @@ class OpenAICompatibleClient:
             ) from exc
         return str(content)
 
+    async def complete(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        system_prompt: str | None,
+        temperature: float,
+        max_tokens: int,
+    ) -> str:
+        """Return one non-streaming completion for structured generation tasks."""
+
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    self.completions_url, headers=self.headers, json=payload
+                )
+        except httpx.TimeoutException as exc:
+            raise ProviderRequestError("Provider request timed out") from exc
+        except httpx.RequestError as exc:
+            raise ProviderRequestError(f"Cannot connect to Provider: {exc}") from exc
+
+        if not response.is_success:
+            raise ProviderRequestError(self._response_error(response))
+        try:
+            content = response.json()["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+            raise ProviderRequestError(
+                "Provider returned an invalid completion response"
+            ) from exc
+        if not isinstance(content, str) or not content.strip():
+            raise ProviderRequestError("Provider returned empty completion content")
+        return content
+
     async def stream(
         self,
         *,

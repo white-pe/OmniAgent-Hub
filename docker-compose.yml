@@ -10,6 +10,7 @@ services:
       PAWTEAM_DATA_DIR: /app/data
       PAWTEAM_SECRETS_DIR: /app/data/secrets
       PAWTEAM_WORKSPACES_DIR: /app/data/workspaces
+      PAWTEAM_BLUEPRINT_TTL_MINUTES: 1440
     volumes:
       - pawteam-data:/app/data
     expose:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from uuid import uuid4
 
@@ -27,12 +28,25 @@ class WorkspaceStore:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._harden_permissions(self.root, 0o700)
 
-    def prepare(self, agent_id: str, name: str, description: str) -> Path:
+    def prepare(
+        self,
+        agent_id: str,
+        name: str,
+        description: str,
+        files: Mapping[str, str] | None = None,
+    ) -> Path:
         self._validate_segment(agent_id)
+        contents = (
+            dict(files) if files is not None else self._templates(name, description)
+        )
+        if set(contents) != set(CORE_WORKSPACE_FILES):
+            raise WorkspaceError("Workspace must contain exactly the four core files")
+        if any(len(content) > 200_000 for content in contents.values()):
+            raise WorkspaceError("Workspace file content is too large")
         staging = Path(tempfile.mkdtemp(prefix=f".staging-{agent_id}-", dir=self.root))
         self._harden_permissions(staging, 0o700)
         try:
-            for filename, content in self._templates(name, description).items():
+            for filename, content in contents.items():
                 path = staging / filename
                 path.write_text(content, encoding="utf-8")
                 self._harden_permissions(path, 0o600)

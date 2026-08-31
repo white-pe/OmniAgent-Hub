@@ -33,6 +33,7 @@ import {
   type WorkspaceFilename,
 } from "../api/agents";
 import { listProviders, type Provider } from "../api/providers";
+import BlueprintCreator from "../components/BlueprintCreator";
 
 const { Paragraph, Text } = Typography;
 const { TextArea } = Input;
@@ -199,9 +200,11 @@ export default function AgentsPage() {
         />
       )}
 
+      <BlueprintCreator providers={enabledProviders} onCreated={refresh} />
+
       <Card title="手动创建 Agent" className="agent-form-card">
         <Paragraph type="secondary">
-          阶段 2 先验证 Agent 元数据与 Workspace 的组合；阶段 3 才会用自然语言自动生成这些配置。
+          保留阶段 2 的确定性入口，便于对比“手动表单”和“Blueprint 两阶段创建”两条业务链路。
         </Paragraph>
         <AgentForm
           form={createForm}
@@ -379,7 +382,7 @@ function AgentForm({
         <Select options={models} disabled={!models.length} />
       </Form.Item>
       <Form.Item name="is_coordinator" valuePropName="checked">
-        <Checkbox>作为协调 Agent（阶段 2 只保存标记，委派逻辑稍后实现）</Checkbox>
+        <Checkbox>作为协调 Agent（当前只保存标记，阶段 6 实现委派）</Checkbox>
       </Form.Item>
       {!hideSubmit && (
         <Button type="primary" htmlType="submit" loading={saving} disabled={!providers.length}>

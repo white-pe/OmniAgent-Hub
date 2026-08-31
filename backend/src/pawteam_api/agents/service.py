@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from uuid import uuid4
 
@@ -51,31 +52,41 @@ class AgentService:
             raise AgentNotFoundError(agent_id)
         return self._response(*row)
 
-    async def create(self, payload: AgentCreate) -> AgentResponse:
-        await self._validate_model(payload.provider_id, payload.model_id)
+    async def create(
+        self,
+        payload: AgentCreate,
+        *,
+        workspace_files: Mapping[str, str] | None = None,
+        before_commit: Callable[[str], None] | None = None,
+    ) -> AgentResponse:
         agent_id = str(uuid4())
         staging: Path | None = None
         final_directory: Path | None = None
         try:
+            await self._validate_model(payload.provider_id, payload.model_id)
             staging = self.workspace_store.prepare(
-                agent_id, payload.name, payload.description
+                agent_id,
+                payload.name,
+                payload.description,
+                files=workspace_files,
             )
             workspace_path = self.workspace_store.finalize(staging, agent_id)
             staging = None
             final_directory = self.workspace_store.root / workspace_path
-            self.session.add(
-                Agent(
-                    id=agent_id,
-                    name=payload.name,
-                    description=payload.description,
-                    status="active",
-                    workspace_path=workspace_path,
-                    provider_id=payload.provider_id,
-                    model_id=payload.model_id,
-                    is_coordinator=payload.is_coordinator,
-                    version=1,
-                )
+            agent = Agent(
+                id=agent_id,
+                name=payload.name,
+                description=payload.description,
+                status="active",
+                workspace_path=workspace_path,
+                provider_id=payload.provider_id,
+                model_id=payload.model_id,
+                is_coordinator=payload.is_coordinator,
+                version=1,
             )
+            self.session.add(agent)
+            if before_commit is not None:
+                before_commit(agent_id)
             await self.session.commit()
         except IntegrityError as exc:
             await self.session.rollback()
