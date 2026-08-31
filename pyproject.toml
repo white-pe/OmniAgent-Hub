@@ -1,6 +1,6 @@
 [project]
 name = "pawteam-lite"
-version = "0.8.0"
+version = "0.8.1"
 description = "A small, explainable multi-agent platform built step by step."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -12,7 +12,9 @@ dependencies = [
     "httpx>=0.28,<1",
     "pydantic-settings>=2.10,<3",
     "sqlalchemy[asyncio]>=2.0,<3",
+    "segno>=1.6,<2",
     "uvicorn[standard]>=0.35,<1",
+    "wecom-aibot-python-sdk==1.0.2",
 ]
 
 [dependency-groups]

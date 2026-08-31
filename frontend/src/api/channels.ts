@@ -3,13 +3,15 @@ export type ChannelStatus = "active" | "disabled";
 export interface Channel {
   id: string;
   name: string;
-  kind: "wecom";
+  kind: "wecom" | "wecom_bot";
   agent_id: string;
   agent_name: string;
   status: ChannelStatus;
-  corp_id: string;
-  wecom_agent_id: number;
-  callback_path: string;
+  corp_id: string | null;
+  wecom_agent_id: number | null;
+  bot_id_masked: string | null;
+  callback_path: string | null;
+  connection_status: "not_applicable" | "stopped" | "connecting" | "connected" | "error";
   has_secrets: boolean;
   version: number;
   created_at: string;
@@ -24,6 +26,25 @@ export interface WeComChannelInput {
   token: string;
   encoding_aes_key: string;
   corp_secret: string;
+}
+
+export interface WeComBotInput {
+  name: string;
+  agent_id: string;
+  auth_session_id?: string;
+  bot_id?: string;
+  secret?: string;
+}
+
+export interface WeComQrStart {
+  auth_session_id: string;
+  qrcode_image: string;
+  expires_in: number;
+}
+
+export interface WeComQrStatus {
+  status: "waiting" | "ready" | "expired" | "failed";
+  message: string | null;
 }
 
 export interface ChannelMessage {
@@ -65,6 +86,48 @@ export async function listChannels(): Promise<Channel[]> {
 
 export async function createChannel(input: WeComChannelInput): Promise<Channel> {
   return requestJson<Channel>("/api/channels", jsonRequest("POST", input));
+}
+
+export async function startWeComBotQr(): Promise<WeComQrStart> {
+  return requestJson<WeComQrStart>(
+    "/api/channels/wecom-bot/qrcode",
+    { method: "POST" },
+  );
+}
+
+export async function pollWeComBotQr(
+  authSessionId: string,
+): Promise<WeComQrStatus> {
+  return requestJson<WeComQrStatus>(
+    `/api/channels/wecom-bot/qrcode/${authSessionId}`,
+  );
+}
+
+export async function createWeComBot(input: WeComBotInput): Promise<Channel> {
+  return requestJson<Channel>(
+    "/api/channels/wecom-bot",
+    jsonRequest("POST", input),
+  );
+}
+
+export async function updateWeComBot(
+  channel: Channel,
+  input: Pick<WeComBotInput, "name" | "agent_id">,
+): Promise<Channel> {
+  return requestJson<Channel>(
+    `/api/channels/wecom-bot/${channel.id}`,
+    jsonRequest("PUT", { ...input, expected_version: channel.version }),
+  );
+}
+
+export async function rotateWeComBotCredentials(
+  channel: Channel,
+  input: Pick<WeComBotInput, "auth_session_id" | "bot_id" | "secret">,
+): Promise<Channel> {
+  return requestJson<Channel>(
+    `/api/channels/wecom-bot/${channel.id}/credentials`,
+    jsonRequest("PUT", { ...input, expected_version: channel.version }),
+  );
 }
 
 export async function updateChannel(

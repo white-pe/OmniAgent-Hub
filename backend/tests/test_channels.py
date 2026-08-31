@@ -3,10 +3,12 @@ import base64
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 from fastapi.testclient import TestClient
 from pawteam_api.channels.wecom_client import WeComAccessToken
 from pawteam_api.channels.wecom_crypto import WeComCrypto
+from pawteam_api.channels.wecom_qr import WeComBotCredentials
 from pawteam_api.config import Settings
 from pawteam_api.database import create_database_engine
 from pawteam_api.main import create_app
@@ -58,6 +60,60 @@ class FakeWeComClient:
                 "content": content,
             }
         )
+
+
+class FakeBotConnection:
+    instances: list["FakeBotConnection"] = []
+
+    def __init__(
+        self,
+        *,
+        bot_id: str,
+        secret: str,
+        max_reconnect_attempts: int,
+        on_message: Any,
+    ) -> None:
+        self.bot_id = bot_id
+        self.secret = secret
+        self.max_reconnect_attempts = max_reconnect_attempts
+        self.on_message = on_message
+        self.status = "stopped"
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.sent: list[tuple[str, str]] = []
+        self.instances.append(self)
+
+    def start(self, main_loop: asyncio.AbstractEventLoop) -> None:
+        self.loop = main_loop
+        self.status = "connected"
+
+    async def stop(self) -> None:
+        self.status = "stopped"
+
+    async def send_text(self, chat_id: str, content: str) -> None:
+        self.sent.append((chat_id, content))
+
+    def emit(self, frame: dict[str, object]) -> None:
+        assert self.loop is not None
+        future = asyncio.run_coroutine_threadsafe(self.on_message(frame), self.loop)
+        future.result(timeout=2)
+
+
+class FakeQrAuthorization:
+    def __init__(self) -> None:
+        self.ready = False
+
+    async def start(self) -> tuple[str, str, int]:
+        return "opaque-auth-session-1234567890", "data:image/png;base64,dGVzdA==", 300
+
+    async def poll(self, session_id: str) -> tuple[str, str | None]:
+        assert session_id == "opaque-auth-session-1234567890"
+        self.ready = True
+        return "ready", None
+
+    def consume(self, session_id: str) -> WeComBotCredentials:
+        assert self.ready is True
+        assert session_id == "opaque-auth-session-1234567890"
+        return WeComBotCredentials("bot-id-should-not-leak", "bot-secret-encrypted")
 
 
 async def create_test_schema(settings: Settings) -> None:
@@ -276,3 +332,104 @@ def test_channel_debug_ingress_and_optimistic_configuration(tmp_path: Path) -> N
         assert debug.status_code == 409
         deleted = client.delete(f"/api/channels/{channel['id']}")
         assert deleted.status_code == 204
+
+
+def test_wecom_bot_qr_connects_receives_and_replies_without_exposing_secret(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        environment="test",
+        data_dir=tmp_path,
+        secrets_dir=tmp_path / "secrets",
+        workspaces_dir=tmp_path / "workspaces",
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
+        run_event_poll_interval_seconds=0.01,
+    )
+    asyncio.run(create_test_schema(settings))
+    application = create_app(settings)
+    FakeBotConnection.instances = []
+
+    with TestClient(application) as client:
+        application.state.provider_client_factory = ChannelRuntimeClient
+        application.state.wecom_bot_connection_factory = FakeBotConnection
+        application.state.wecom_qr_service = FakeQrAuthorization()
+        provider = client.post(
+            "/api/providers",
+            json={
+                "name": "Bot Provider",
+                "base_url": "https://example.com/v1",
+                "api_key": "sk-bot-test",
+                "models": [{"model_name": "bot-model"}],
+            },
+        ).json()
+        agent = client.post(
+            "/api/agents",
+            json={
+                "name": "智能机器人助理",
+                "description": "通过智能机器人长连接回复",
+                "provider_id": provider["id"],
+                "model_id": provider["models"][0]["id"],
+                "is_coordinator": False,
+            },
+        ).json()
+
+        started = client.post("/api/channels/wecom-bot/qrcode")
+        assert started.status_code == 200
+        qr_body = started.json()
+        assert qr_body == {
+            "auth_session_id": "opaque-auth-session-1234567890",
+            "qrcode_image": "data:image/png;base64,dGVzdA==",
+            "expires_in": 300,
+        }
+        assert "secret" not in started.text.lower()
+        polled = client.get(
+            f"/api/channels/wecom-bot/qrcode/{qr_body['auth_session_id']}"
+        )
+        assert polled.json() == {"status": "ready", "message": None}
+        assert "bot-id" not in polled.text
+
+        created = client.post(
+            "/api/channels/wecom-bot",
+            json={
+                "name": "扫码机器人",
+                "agent_id": agent["id"],
+                "auth_session_id": qr_body["auth_session_id"],
+            },
+        )
+        assert created.status_code == 201
+        channel = created.json()
+        assert channel["kind"] == "wecom_bot"
+        assert channel["connection_status"] == "connected"
+        assert channel["bot_id_masked"] == "bot-id-***leak"
+        assert "bot-secret" not in created.text
+        assert len(FakeBotConnection.instances) == 1
+        connection = FakeBotConnection.instances[0]
+        assert connection.bot_id == "bot-id-should-not-leak"
+        assert connection.secret == "bot-secret-encrypted"
+
+        encrypted_secret = next((tmp_path / "secrets").glob("channel_*.secret"))
+        assert b"bot-secret-encrypted" not in encrypted_secret.read_bytes()
+        connection.emit(
+            {
+                "body": {
+                    "msgtype": "text",
+                    "msgid": "wecom-bot-message-1",
+                    "chatid": "group-chat-100",
+                    "from": {"userid": "zhangsan"},
+                    "text": {"content": "帮我总结今天的工作"},
+                }
+            }
+        )
+        messages = wait_for_delivery(client, channel["id"])
+        assert len(messages) == 2
+        assert connection.sent == [
+            ("group-chat-100", "今天完成了企业微信接入。")
+        ]
+
+        disabled = client.put(
+            f"/api/channels/{channel['id']}/status",
+            json={"expected_version": 1, "status": "disabled"},
+        )
+        assert disabled.status_code == 200
+        assert disabled.json()["connection_status"] == "stopped"
+        assert connection.status == "stopped"

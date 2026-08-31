@@ -8,7 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from pawteam_api.api.router import api_router
 from pawteam_api.channels.dispatcher import ChannelDispatcher
+from pawteam_api.channels.wecom_bot import WeComBotConnection, WeComBotManager
 from pawteam_api.channels.wecom_client import WeComApiClient
+from pawteam_api.channels.wecom_qr import WeComQrAuthorizationService
 from pawteam_api.config import Settings, get_settings
 from pawteam_api.database import create_database_engine, create_session_factory
 from pawteam_api.providers.client import OpenAICompatibleClient
@@ -33,11 +35,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             resolved_settings, app.state.workspace_store
         )
         app.state.wecom_client_factory = WeComApiClient
+        app.state.wecom_qr_service = WeComQrAuthorizationService(resolved_settings)
+        app.state.wecom_bot_connection_factory = WeComBotConnection
+        app.state.wecom_bot_manager = WeComBotManager(
+            session_factory=app.state.session_factory,
+            settings=resolved_settings,
+            secret_store=app.state.secret_store,
+            connection_factory=lambda **kwargs: (
+                app.state.wecom_bot_connection_factory(**kwargs)
+            ),
+        )
         app.state.channel_dispatcher = ChannelDispatcher(
             session_factory=app.state.session_factory,
             settings=resolved_settings,
             secret_store=app.state.secret_store,
             client_factory=lambda timeout: app.state.wecom_client_factory(timeout),
+            bot_sender=app.state.wecom_bot_manager,
         )
         app.state.provider_client_factory = OpenAICompatibleClient
         app.state.run_manager = RunManager(
@@ -51,11 +64,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             channel_dispatcher=app.state.channel_dispatcher,
         )
+        app.state.wecom_bot_manager.bind_runtime(
+            app.state.run_manager, app.state.channel_dispatcher
+        )
         await app.state.run_manager.recover_interrupted_runs()
+        await app.state.wecom_bot_manager.start_all()
         await app.state.channel_dispatcher.recover_pending()
         yield
         await app.state.run_manager.shutdown()
         await app.state.channel_dispatcher.shutdown()
+        await app.state.wecom_bot_manager.shutdown()
         await app.state.db_engine.dispose()
 
     application = FastAPI(

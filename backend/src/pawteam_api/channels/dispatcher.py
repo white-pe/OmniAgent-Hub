@@ -6,18 +6,24 @@ import asyncio
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import Protocol
 
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from pawteam_api.channels.service import WeComSecrets
+from pawteam_api.channels.wecom_bot import WeComBotError
 from pawteam_api.channels.wecom_client import WeComApiClient, WeComRequestError
 from pawteam_api.config import Settings
 from pawteam_api.models import Channel, ChannelMessage
 from pawteam_api.security.secret_store import SecretStore, SecretStoreError
 
 WeComClientFactory = Callable[[float], WeComApiClient]
+
+
+class WeComBotSender(Protocol):
+    async def send_text(self, channel_id: str, chat_id: str, content: str) -> None: ...
 
 
 class ChannelDispatcher:
@@ -28,11 +34,13 @@ class ChannelDispatcher:
         settings: Settings,
         secret_store: SecretStore,
         client_factory: WeComClientFactory = WeComApiClient,
+        bot_sender: WeComBotSender | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings
         self.secret_store = secret_store
         self.client_factory = client_factory
+        self.bot_sender = bot_sender
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.token_cache: dict[str, tuple[str, datetime]] = {}
 
@@ -106,7 +114,13 @@ class ChannelDispatcher:
                 return
             except asyncio.CancelledError:
                 raise
-            except (WeComRequestError, SecretStoreError, ValueError, KeyError) as exc:
+            except (
+                WeComBotError,
+                WeComRequestError,
+                SecretStoreError,
+                ValueError,
+                KeyError,
+            ) as exc:
                 if channel_id is not None:
                     self.token_cache.pop(channel_id, None)
                 attempts = await self._mark_failed_attempt(message_id, str(exc))
@@ -138,6 +152,20 @@ class ChannelDispatcher:
             return channel, message
 
     async def _send(self, channel: Channel, message: ChannelMessage) -> None:
+        if channel.kind == "wecom_bot":
+            if self.bot_sender is None:
+                raise WeComBotError("WeCom bot sender is not configured")
+            chunks = self._text_chunks(message.content)
+            for index, chunk in enumerate(chunks, start=1):
+                content = (
+                    f"({index}/{len(chunks)})\n{chunk}"
+                    if len(chunks) > 1
+                    else chunk
+                )
+                await self.bot_sender.send_text(
+                    channel.id, message.external_conversation_id, content
+                )
+            return
         raw = json.loads(self.secret_store.get(channel.secret_ref))
         secrets = WeComSecrets(
             token=str(raw["token"]),

@@ -14,10 +14,13 @@ from pawteam_api.channel_schemas import (
     ChannelMessageResponse,
     ChannelResponse,
     ChannelStatusUpdate,
+    WeComBotChannelCreate,
+    WeComBotChannelUpdate,
     WeComChannelCreate,
     WeComChannelUpdate,
     WeComSecretRotate,
 )
+from pawteam_api.channels.wecom_qr import WeComBotCredentials
 from pawteam_api.models import Agent, Channel, ChannelMessage
 from pawteam_api.security.secret_store import (
     SecretNotFoundError,
@@ -43,6 +46,11 @@ class WeComSecrets:
     token: str
     encoding_aes_key: str
     corp_secret: str
+
+
+@dataclass(frozen=True)
+class WeComBotSecrets:
+    secret: str
 
 
 class ChannelService:
@@ -101,10 +109,47 @@ class ChannelService:
         await self.session.refresh(channel)
         return self._response(channel, agent.name)
 
+    async def create_bot(
+        self,
+        payload: WeComBotChannelCreate,
+        credentials: WeComBotCredentials,
+    ) -> ChannelResponse:
+        agent = await self._active_agent(payload.agent_id)
+        channel_id = str(uuid4())
+        secret_ref = f"channel_{channel_id}"
+        self.secret_store.set(
+            secret_ref,
+            json.dumps(asdict(WeComBotSecrets(secret=credentials.secret))),
+        )
+        channel = Channel(
+            id=channel_id,
+            name=payload.name.strip(),
+            kind="wecom_bot",
+            agent_id=agent.id,
+            secret_ref=secret_ref,
+            status="active",
+            config_json={"bot_id": credentials.bot_id},
+            version=1,
+        )
+        self.session.add(channel)
+        try:
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            self.secret_store.delete(secret_ref)
+            raise ChannelConflictError("Channel name already exists") from exc
+        except Exception:
+            await self.session.rollback()
+            self.secret_store.delete(secret_ref)
+            raise
+        await self.session.refresh(channel)
+        return self._response(channel, agent.name)
+
     async def update(
         self, channel_id: str, payload: WeComChannelUpdate
     ) -> ChannelResponse:
         channel, _ = await self._row(channel_id)
+        self._require_kind(channel, "wecom")
         self._check_version(channel, payload.expected_version)
         agent = await self._active_agent(payload.agent_id)
         channel.name = payload.name.strip()
@@ -122,10 +167,54 @@ class ChannelService:
         await self.session.refresh(channel)
         return self._response(channel, agent.name)
 
+    async def update_bot(
+        self, channel_id: str, payload: WeComBotChannelUpdate
+    ) -> ChannelResponse:
+        channel, _ = await self._row(channel_id)
+        self._require_kind(channel, "wecom_bot")
+        self._check_version(channel, payload.expected_version)
+        agent = await self._active_agent(payload.agent_id)
+        channel.name = payload.name.strip()
+        channel.agent_id = agent.id
+        channel.version += 1
+        try:
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise ChannelConflictError("Channel name already exists") from exc
+        await self.session.refresh(channel)
+        return self._response(channel, agent.name)
+
+    async def rotate_bot(
+        self,
+        channel_id: str,
+        *,
+        expected_version: int,
+        credentials: WeComBotCredentials,
+    ) -> ChannelResponse:
+        channel, agent_name = await self._row(channel_id)
+        self._require_kind(channel, "wecom_bot")
+        self._check_version(channel, expected_version)
+        previous = self.secret_store.get(channel.secret_ref)
+        self.secret_store.set(
+            channel.secret_ref,
+            json.dumps(asdict(WeComBotSecrets(secret=credentials.secret))),
+        )
+        channel.config_json = {"bot_id": credentials.bot_id}
+        channel.version += 1
+        try:
+            await self.session.commit()
+        except Exception:
+            self.secret_store.set(channel.secret_ref, previous)
+            raise
+        await self.session.refresh(channel)
+        return self._response(channel, agent_name)
+
     async def rotate(
         self, channel_id: str, payload: WeComSecretRotate
     ) -> ChannelResponse:
         channel, agent_name = await self._row(channel_id)
+        self._require_kind(channel, "wecom")
         self._check_version(channel, payload.expected_version)
         previous = self.secret_store.get(channel.secret_ref)
         replacement = WeComSecrets(
@@ -193,6 +282,7 @@ class ChannelService:
         return channel
 
     def secrets(self, channel: Channel) -> WeComSecrets:
+        self._require_kind(channel, "wecom")
         try:
             raw = json.loads(self.secret_store.get(channel.secret_ref))
             return WeComSecrets(
@@ -209,6 +299,22 @@ class ChannelService:
         ) as exc:
             raise ChannelConfigurationError(
                 "Channel credentials are missing or invalid"
+            ) from exc
+
+    def bot_secrets(self, channel: Channel) -> WeComBotSecrets:
+        self._require_kind(channel, "wecom_bot")
+        try:
+            raw = json.loads(self.secret_store.get(channel.secret_ref))
+            return WeComBotSecrets(secret=str(raw["secret"]))
+        except (
+            SecretNotFoundError,
+            SecretStoreError,
+            KeyError,
+            TypeError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise ChannelConfigurationError(
+                "Channel bot credentials are missing or invalid"
             ) from exc
 
     async def _row(self, channel_id: str) -> tuple[Channel, str]:
@@ -239,22 +345,48 @@ class ChannelService:
                 f"current version is {channel.version}"
             )
 
+    @staticmethod
+    def _require_kind(channel: Channel, kind: str) -> None:
+        if channel.kind != kind:
+            raise ChannelConfigurationError(
+                f"Channel mode is {channel.kind}, expected {kind}"
+            )
+
     def _response(self, channel: Channel, agent_name: str) -> ChannelResponse:
+        is_bot = channel.kind == "wecom_bot"
+        bot_id = str(channel.config_json.get("bot_id", ""))
         return ChannelResponse(
             id=channel.id,
             name=channel.name,
-            kind="wecom",
+            kind="wecom_bot" if is_bot else "wecom",
             agent_id=channel.agent_id,
             agent_name=agent_name,
             status=channel.status,
-            corp_id=str(channel.config_json["corp_id"]),
-            wecom_agent_id=int(channel.config_json["wecom_agent_id"]),
-            callback_path=f"/api/channel-webhooks/wecom/{channel.id}",
+            corp_id=(
+                None if is_bot else str(channel.config_json.get("corp_id", ""))
+            ),
+            wecom_agent_id=(
+                None
+                if is_bot
+                else int(channel.config_json.get("wecom_agent_id", 0))
+            ),
+            bot_id_masked=self._mask(bot_id) if is_bot else None,
+            callback_path=(
+                None
+                if is_bot
+                else f"/api/channel-webhooks/wecom/{channel.id}"
+            ),
             has_secrets=self.secret_store.exists(channel.secret_ref),
             version=channel.version,
             created_at=channel.created_at,
             updated_at=channel.updated_at,
         )
+
+    @staticmethod
+    def _mask(value: str) -> str:
+        if len(value) <= 10:
+            return f"{value[:3]}***"
+        return f"{value[:7]}***{value[-4:]}"
 
     @staticmethod
     def message_response(message: ChannelMessage) -> ChannelMessageResponse:

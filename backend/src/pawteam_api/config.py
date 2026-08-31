@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "PawTeam Lite"
-    version: str = "0.8.0"
+    version: str = "0.8.1"
     environment: str = "development"
     host: str = "127.0.0.1"
     port: int = 8000
@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     channel_outbox_max_attempts: int = 5
     channel_outbox_batch_size: int = 20
     channel_delivery_timeout_seconds: float = 10.0
+    channel_qr_session_seconds: int = 300
+    channel_wecom_reconnect_attempts: int = -1
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",

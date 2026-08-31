@@ -16,11 +16,11 @@ export default function App() {
     <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: "#ff7a1a" } }}>
       <main className="shell">
         <section className="hero">
-          <Text className="eyebrow">PAWTEAM LITE · STAGE 7</Text>
-          <Title>让企业微信成为 Agent 的一个真实入口。</Title>
+          <Text className="eyebrow">PAWTEAM LITE · STAGE 7.1</Text>
+          <Title>扫码，让企业微信成为 Agent 的真实入口。</Title>
           <Paragraph>
-            企业微信消息经过验签与 AES 解密后映射到内部会话；Agent 或 Team 在后台完成任务，
-            再通过企业微信应用消息主动回复，全程保留可审计记录。
+            智能机器人通过 WebSocket 长连接收发消息，无需公网回调；传统自建应用模式继续保留。
+            两种入口都复用同一套 Agent、Team、Run 与消息审计链路。
           </Paragraph>
         </section>
         <Tabs

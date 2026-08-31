@@ -21,7 +21,7 @@ def test_health_reports_database_ready(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json() == {
         "name": "PawTeam Lite",
-        "version": "0.8.0",
+        "version": "0.8.1",
         "environment": "test",
         "status": "ok",
         "database": "ok",
