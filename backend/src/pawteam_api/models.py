@@ -1,9 +1,18 @@
 """SQLAlchemy metadata and stage-zero bootstrap table."""
 
 from datetime import datetime
+from uuid import uuid4
 
-from sqlalchemy import DateTime, String, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -22,3 +31,61 @@ class SystemMetadata(Base):
         server_default=func.now(),
         nullable=False,
     )
+
+
+class Provider(Base):
+    """An OpenAI-compatible endpoint and its non-secret configuration."""
+
+    __tablename__ = "providers"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    kind: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="openai_compatible"
+    )
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    api_key_ref: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    models: Mapped[list["ProviderModel"]] = relationship(
+        back_populates="provider",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="ProviderModel.created_at",
+    )
+
+
+class ProviderModel(Base):
+    """A concrete model exposed by one Provider."""
+
+    __tablename__ = "provider_models"
+    __table_args__ = (
+        UniqueConstraint("provider_id", "model_name", name="uq_provider_model_name"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    provider_id: Mapped[str] = mapped_column(
+        ForeignKey("providers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    capabilities_json: Mapped[dict[str, object]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    provider: Mapped[Provider] = relationship(back_populates="models")

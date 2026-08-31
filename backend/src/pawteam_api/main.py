@@ -8,7 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from pawteam_api.api.router import api_router
 from pawteam_api.config import Settings, get_settings
-from pawteam_api.database import create_database_engine
+from pawteam_api.database import create_database_engine, create_session_factory
+from pawteam_api.providers.client import OpenAICompatibleClient
+from pawteam_api.security.secret_store import SecretStore
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -19,6 +21,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         resolved_settings.ensure_directories()
         app.state.settings = resolved_settings
         app.state.db_engine = create_database_engine(resolved_settings)
+        app.state.session_factory = create_session_factory(app.state.db_engine)
+        app.state.secret_store = SecretStore(resolved_settings)
+        app.state.provider_client_factory = OpenAICompatibleClient
         yield
         await app.state.db_engine.dispose()
 

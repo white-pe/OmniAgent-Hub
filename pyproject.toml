@@ -1,12 +1,13 @@
 [project]
 name = "pawteam-lite"
-version = "0.1.0"
+version = "0.2.0"
 description = "A small, explainable multi-agent platform built step by step."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
 dependencies = [
     "aiosqlite>=0.21,<1",
     "alembic>=1.16,<2",
+    "cryptography>=45,<47",
     "fastapi>=0.116,<1",
     "pydantic-settings>=2.10,<3",
     "sqlalchemy[asyncio]>=2.0,<3",

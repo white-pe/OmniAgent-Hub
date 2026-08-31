@@ -8,6 +8,7 @@ services:
       PAWTEAM_HOST: 0.0.0.0
       PAWTEAM_DATABASE_URL: sqlite+aiosqlite:////app/data/app.db
       PAWTEAM_DATA_DIR: /app/data
+      PAWTEAM_SECRETS_DIR: /app/data/secrets
     volumes:
       - pawteam-data:/app/data
     expose:
