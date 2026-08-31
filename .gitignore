@@ -1,0 +1,18 @@
+.DS_Store
+.env
+.idea/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.db
+data/
+frontend/dist/
+frontend/node_modules/
+frontend/*.tsbuildinfo
+
+# The parent QwenPaw repository ignores every uv.lock. PawTeam Lite keeps
+# its own lock file so a fresh checkout resolves the same Python packages.
+!uv.lock

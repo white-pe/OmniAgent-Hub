@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Backend API" type="PythonConfigurationType" factoryName="Python">
+    <module name="pawteam-lite" />
+    <option name="SDK_HOME" value="$PROJECT_DIR$/.venv/bin/python" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="IS_MODULE_SDK" value="false" />
+    <option name="MODULE_MODE" value="true" />
+    <option name="SCRIPT_NAME" value="uvicorn" />
+    <option name="PARAMETERS" value="pawteam_api.main:app --app-dir backend/src --reload --port 8000" />
+    <method v="2" />
+  </configuration>
+</component>
