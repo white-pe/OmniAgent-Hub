@@ -13,6 +13,7 @@ codex/stage-5-tools-skills   阶段 5 Skills、Tools 与 Tool Calling 快照
 codex/stage-6-team           阶段 6 Team 与受控 Agent 委派快照
 codex/stage-7-channels       阶段 7 企业微信 Channel 快照
 codex/stage-7.1-wecom-bot-qr 阶段 7.1 智能机器人扫码与长连接快照
+codex/stage-7.2-unified-channel-chat 阶段 7.2 跨 Channel 统一会话快照
 ```
 
 每个阶段分支代表“完成该阶段后，项目应该是什么样”。下一阶段从上一阶段分支创建，形成线性提交历史。

@@ -262,6 +262,11 @@ def test_encrypted_wecom_callback_creates_one_run_and_active_reply(
         chats = client.get("/api/chats").json()
         assert len(chats) == 1
         assert chats[0]["channel"] == "wecom"
+        assert chats[0]["channel_id"] == channel["id"]
+        assert chats[0]["channel_name"] == "内部工作助理"
+        assert chats[0]["channel_kind"] == "wecom"
+        assert chats[0]["external_conversation_id"] == "zhangsan"
+        assert chats[0]["external_user_id"] == "zhangsan"
 
         invalid = client.post(
             channel["callback_path"],
@@ -425,6 +430,25 @@ def test_wecom_bot_qr_connects_receives_and_replies_without_exposing_secret(
         assert connection.sent == [
             ("group-chat-100", "今天完成了企业微信接入。")
         ]
+        chats = client.get("/api/chats").json()
+        assert len(chats) == 1
+        assert chats[0]["channel"] == "wecom"
+        assert chats[0]["channel_id"] == channel["id"]
+        assert chats[0]["channel_name"] == "扫码机器人"
+        assert chats[0]["channel_kind"] == "wecom_bot"
+        assert chats[0]["external_conversation_id"] == "group-chat-100"
+        assert chats[0]["external_user_id"] == "zhangsan"
+        detail = client.get(f"/api/chats/{chats[0]['id']}").json()
+        assert [item["content"] for item in detail["messages"]] == [
+            "帮我总结今天的工作",
+            "今天完成了企业微信接入。",
+        ]
+        forged_web_message = client.post(
+            f"/api/chats/{chats[0]['id']}/runs",
+            json={"content": "这条消息不应伪装成企业微信用户"},
+        )
+        assert forged_web_message.status_code == 409
+        assert "read-only" in forged_web_message.json()["detail"]
 
         disabled = client.put(
             f"/api/channels/{channel['id']}/status",

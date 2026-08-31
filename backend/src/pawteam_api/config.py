@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "PawTeam Lite"
-    version: str = "0.8.1"
+    version: str = "0.8.2"
     environment: str = "development"
     host: str = "127.0.0.1"
     port: int = 8000

@@ -16,11 +16,11 @@ export default function App() {
     <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: "#ff7a1a" } }}>
       <main className="shell">
         <section className="hero">
-          <Text className="eyebrow">PAWTEAM LITE · STAGE 7.1</Text>
-          <Title>扫码，让企业微信成为 Agent 的真实入口。</Title>
+          <Text className="eyebrow">PAWTEAM LITE · STAGE 7.2</Text>
+          <Title>一个会话内核，连接网页与企业微信。</Title>
           <Paragraph>
-            智能机器人通过 WebSocket 长连接收发消息，无需公网回调；传统自建应用模式继续保留。
-            两种入口都复用同一套 Agent、Team、Run 与消息审计链路。
+            网页和企业微信共享同一套 Chat、Run 与消息历史；统一控制台可以查看所有入口的会话，
+            并保留清晰的来源、权限和执行审计边界。
           </Paragraph>
         </section>
         <Tabs

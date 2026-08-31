@@ -11,7 +11,12 @@ export interface ChatSession {
   agent_id: string;
   agent_name: string;
   title: string;
-  channel: "console";
+  channel: "console" | "wecom";
+  channel_id: string | null;
+  channel_name: string | null;
+  channel_kind: "wecom" | "wecom_bot" | null;
+  external_conversation_id: string | null;
+  external_user_id: string | null;
   status: "active" | "archived";
   created_at: string;
   updated_at: string;

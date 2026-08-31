@@ -42,6 +42,11 @@ class ChatSessionResponse(BaseModel):
     agent_name: str
     title: str
     channel: Literal["console", "wecom"]
+    channel_id: str | None = None
+    channel_name: str | None = None
+    channel_kind: Literal["wecom", "wecom_bot"] | None = None
+    external_conversation_id: str | None = None
+    external_user_id: str | None = None
     status: ChatStatus
     created_at: datetime
     updated_at: datetime

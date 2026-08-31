@@ -20,8 +20,10 @@ from pawteam_api.chat_schemas import (
 from pawteam_api.models import (
     Agent,
     AgentRun,
+    Channel,
     ChatSession,
     Delegation,
+    ExternalConversation,
     Message,
     ProviderModel,
     Team,
@@ -78,26 +80,79 @@ class ChatService:
 
     async def list(self, agent_id: str | None) -> list[ChatSessionResponse]:
         query = (
-            select(ChatSession, Agent.name)
+            select(
+                ChatSession,
+                Agent.name,
+                Channel.id,
+                Channel.name,
+                Channel.kind,
+                ExternalConversation.external_conversation_id,
+                ExternalConversation.external_user_id,
+            )
             .join(Agent, Agent.id == ChatSession.agent_id)
+            .outerjoin(
+                ExternalConversation,
+                ExternalConversation.chat_session_id == ChatSession.id,
+            )
+            .outerjoin(Channel, Channel.id == ExternalConversation.channel_id)
             .order_by(ChatSession.updated_at.desc(), ChatSession.created_at.desc())
         )
         if agent_id is not None:
             query = query.where(ChatSession.agent_id == agent_id)
         rows = (await self.session.execute(query)).all()
-        return [self._session_response(chat, agent_name) for chat, agent_name in rows]
+        return [
+            self._session_response(
+                chat,
+                agent_name,
+                channel_id=channel_id,
+                channel_name=channel_name,
+                channel_kind=channel_kind,
+                external_conversation_id=external_conversation_id,
+                external_user_id=external_user_id,
+            )
+            for (
+                chat,
+                agent_name,
+                channel_id,
+                channel_name,
+                channel_kind,
+                external_conversation_id,
+                external_user_id,
+            ) in rows
+        ]
 
     async def get(self, chat_id: str) -> ChatDetailResponse:
         row = (
             await self.session.execute(
-                select(ChatSession, Agent.name)
+                select(
+                    ChatSession,
+                    Agent.name,
+                    Channel.id,
+                    Channel.name,
+                    Channel.kind,
+                    ExternalConversation.external_conversation_id,
+                    ExternalConversation.external_user_id,
+                )
                 .join(Agent, Agent.id == ChatSession.agent_id)
+                .outerjoin(
+                    ExternalConversation,
+                    ExternalConversation.chat_session_id == ChatSession.id,
+                )
+                .outerjoin(Channel, Channel.id == ExternalConversation.channel_id)
                 .where(ChatSession.id == chat_id)
             )
         ).one_or_none()
         if row is None:
             raise ChatNotFoundError(chat_id)
-        chat, agent_name = row
+        (
+            chat,
+            agent_name,
+            channel_id,
+            channel_name,
+            channel_kind,
+            external_conversation_id,
+            external_user_id,
+        ) = row
         messages = (
             await self.session.scalars(
                 select(Message)
@@ -136,7 +191,15 @@ class ChatService:
             else []
         )
         return ChatDetailResponse(
-            session=self._session_response(chat, agent_name),
+            session=self._session_response(
+                chat,
+                agent_name,
+                channel_id=channel_id,
+                channel_name=channel_name,
+                channel_kind=channel_kind,
+                external_conversation_id=external_conversation_id,
+                external_user_id=external_user_id,
+            ),
             messages=[self._message_response(message) for message in messages],
             runs=[run_response(run) for run in runs],
             tool_calls=[tool_call_response(tool_call) for tool_call in tool_calls],
@@ -172,13 +235,27 @@ class ChatService:
         )
 
     @staticmethod
-    def _session_response(chat: ChatSession, agent_name: str) -> ChatSessionResponse:
+    def _session_response(
+        chat: ChatSession,
+        agent_name: str,
+        *,
+        channel_id: str | None = None,
+        channel_name: str | None = None,
+        channel_kind: str | None = None,
+        external_conversation_id: str | None = None,
+        external_user_id: str | None = None,
+    ) -> ChatSessionResponse:
         return ChatSessionResponse(
             id=chat.id,
             agent_id=chat.agent_id,
             agent_name=agent_name,
             title=chat.title,
             channel=chat.channel,
+            channel_id=channel_id,
+            channel_name=channel_name,
+            channel_kind=channel_kind,
+            external_conversation_id=external_conversation_id,
+            external_user_id=external_user_id,
             status=chat.status,
             created_at=chat.created_at,
             updated_at=chat.updated_at,
@@ -216,6 +293,10 @@ class RunCommandService:
         chat, agent, model_name = row
         if chat.status != "active":
             raise ChatConflictError("Chat is archived")
+        if chat.channel != "console":
+            raise ChatConflictError(
+                "External Channel chats are read-only in the web console"
+            )
         if agent.status != "active":
             raise ChatConfigurationError("Agent is disabled")
         active_run_id = await self.session.scalar(

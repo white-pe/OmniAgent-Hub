@@ -142,6 +142,10 @@ def test_agent_runtime_persists_history_and_replays_sse(tmp_path: Path) -> None:
         research_chat = client.post(
             "/api/chats", json={"agent_id": research_agent["id"]}
         ).json()
+        assert research_chat["channel"] == "console"
+        assert research_chat["channel_id"] is None
+        assert research_chat["channel_name"] is None
+        assert research_chat["external_user_id"] is None
         writing_chat = client.post(
             "/api/chats", json={"agent_id": writing_agent["id"]}
         ).json()

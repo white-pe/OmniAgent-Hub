@@ -1,6 +1,6 @@
 # PawTeam Lite
 
-PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前完成到**阶段 7.1：企业微信智能机器人扫码接入**。
+PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前完成到**阶段 7.2：跨 Channel 统一会话控制台**。
 
 ## 当前能力
 
@@ -13,6 +13,7 @@ PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前完成
 - 阶段 6：Team 成员白名单、协调 Agent、父子 Run 和受控 Agent 委派；
 - 阶段 7：企业微信加密回调、外部会话映射、主动回复和投递审计；
 - 阶段 7.1：企业微信智能机器人扫码授权、WebSocket 长连接、断线重连与无公网回调接入；
+- 阶段 7.2：网页与企业微信统一会话列表、来源元数据、自动刷新和外部会话只读审计；
 - `AGENTS.md / SOUL.md / PROFILE.md / MEMORY.md` 可视化编辑；
 - Agent 启停、协调 Agent 标记和配置版本控制；
 - 数据库与文件操作的补偿事务；
@@ -57,7 +58,7 @@ make dev-frontend
 - `Backend Tests`：pytest；
 - `Frontend Dev`：Vite 开发服务器。
 
-进入阶段 7.1 后，在 PyCharm Terminal 执行：
+进入阶段 7.2 后，在 PyCharm Terminal 执行：
 
 ```bash
 uv sync
@@ -76,6 +77,8 @@ uv run alembic current
 在“Team 与委派”页选择一个已标记为协调者的 Agent，并添加至少一个成员。Team 启用后，Runtime 会只向该协调 Agent 提供动态 `delegate_to_agent` Tool。成员任务使用独立子 Run 执行，子 Agent 不继承协调者的 Workspace、Skill 或 Tool 权限，最终结果才回到父 Run 汇总。
 
 在“企业微信 Channel”页优先选择目标 Agent 后扫码授权。后端会取得 Bot ID 与 Secret、加密保存 Secret，并通过企业微信智能机器人 WebSocket 建立长连接，不需要公网 HTTPS。扫码接口异常时可手工填写 Bot ID 与 Secret；原有自建应用回调方案保留在“高级模式”中。
+
+企业微信产生的会话会进入“Agent 控制台”的统一会话列表，默认范围是“全部 Agent / 全部 Channel”。列表和详情会展示入口、Channel 名称、外部用户及完整消息、Run、Tool、委派审计。外部会话在网页中是只读镜像，继续对话应回到原 Channel，避免网页伪造外部用户输入。
 
 ## Agent 数据边界
 
@@ -122,4 +125,5 @@ docker compose config
 - [阶段 6：Team 与受控 Agent 委派](docs/stage-6-team-and-delegation.zh.md)
 - [阶段 7：企业微信 Channel](docs/stage-7-wecom-channel.zh.md)
 - [阶段 7.1：企业微信智能机器人扫码与长连接](docs/stage-7.1-wecom-bot-qr.zh.md)
+- [阶段 7.2：跨 Channel 统一会话控制台](docs/stage-7.2-unified-channel-chat.zh.md)
 - [Git 阶段复盘](docs/git-stage-workflow.zh.md)

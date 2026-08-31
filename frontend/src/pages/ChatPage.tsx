@@ -32,6 +32,7 @@ import {
 const { Paragraph, Text, Title } = Typography;
 const { TextArea } = Input;
 const ACTIVE_STATUSES: RunStatus[] = ["queued", "running", "cancelling"];
+const ALL_AGENTS = "__all_agents__";
 
 interface LiveToolEvent {
   id: string;
@@ -49,7 +50,7 @@ interface LiveDelegationEvent {
 
 export default function ChatPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [agentId, setAgentId] = useState<string>();
+  const [agentId, setAgentId] = useState<string>(ALL_AGENTS);
   const [chats, setChats] = useState<ChatSession[]>([]);
   const [chatId, setChatId] = useState<string>();
   const [detail, setDetail] = useState<ChatDetail>();
@@ -63,6 +64,8 @@ export default function ChatPage() {
   const [liveDelegations, setLiveDelegations] = useState<LiveDelegationEvent[]>([]);
   const [streamState, setStreamState] = useState("未连接");
   const eventSourceRef = useRef<EventSource | null>(null);
+  const chatsRef = useRef<ChatSession[]>([]);
+  const chatIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const loadAgents = async () => {
@@ -71,7 +74,6 @@ export default function ChatPage() {
           (agent) => agent.status === "active",
         );
         setAgents(enabled);
-        setAgentId((current) => current ?? enabled[0]?.id);
       } catch (reason) {
         void message.error(errorText(reason));
       } finally {
@@ -83,21 +85,26 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    chatsRef.current = chats;
+  }, [chats]);
+
+  useEffect(() => {
+    chatIdRef.current = chatId;
+  }, [chatId]);
+
+  useEffect(() => {
     eventSourceRef.current?.close();
     setActiveRun(undefined);
     setLiveOutput("");
     setLiveToolEvents([]);
     setLiveDelegations([]);
     setDetail(undefined);
-    if (!agentId) {
-      setChats([]);
-      setChatId(undefined);
-      return;
-    }
     const load = async () => {
       setLoading(true);
       try {
-        const nextChats = await listChats(agentId);
+        const nextChats = await listChats(
+          agentId === ALL_AGENTS ? undefined : agentId,
+        );
         setChats(nextChats);
         setChatId((current) =>
           nextChats.some((chat) => chat.id === current)
@@ -114,6 +121,37 @@ export default function ChatPage() {
   }, [agentId]);
 
   useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      try {
+        const nextChats = await listChats(
+          agentId === ALL_AGENTS ? undefined : agentId,
+        );
+        if (!active) return;
+        const selectedId = chatIdRef.current;
+        const previous = chatsRef.current.find((chat) => chat.id === selectedId);
+        const next = nextChats.find((chat) => chat.id === selectedId);
+        chatsRef.current = nextChats;
+        setChats(nextChats);
+        if (
+          selectedId &&
+          next?.channel !== "console" &&
+          previous?.updated_at !== next?.updated_at
+        ) {
+          await loadDetail(selectedId, true);
+        }
+      } catch {
+        // Keep the current history visible during a temporary refresh failure.
+      }
+    };
+    const timer = window.setInterval(() => void poll(), 4000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [agentId]);
+
+  useEffect(() => {
     eventSourceRef.current?.close();
     setActiveRun(undefined);
     setLiveOutput("");
@@ -127,8 +165,11 @@ export default function ChatPage() {
   }, [chatId]);
 
   const refreshChats = async (selectedAgentId = agentId) => {
-    if (!selectedAgentId) return;
-    setChats(await listChats(selectedAgentId));
+    const nextChats = await listChats(
+      selectedAgentId === ALL_AGENTS ? undefined : selectedAgentId,
+    );
+    chatsRef.current = nextChats;
+    setChats(nextChats);
   };
 
   const loadDetail = async (selectedChatId: string, reconnect = false) => {
@@ -142,7 +183,11 @@ export default function ChatPage() {
             (run) =>
               run.parent_run_id === null && ACTIVE_STATUSES.includes(run.status),
           );
-        if (running) connectToRun(running, selectedChatId);
+        if (running) {
+          connectToRun(running, selectedChatId);
+        } else {
+          setStreamState("历史记录");
+        }
       }
     } catch (reason) {
       void message.error(errorText(reason));
@@ -272,7 +317,10 @@ export default function ChatPage() {
   };
 
   const addChat = async () => {
-    if (!agentId) return;
+    if (agentId === ALL_AGENTS) {
+      void message.info("请先选择一个具体 Agent 再新建网页会话");
+      return;
+    }
     setCreating(true);
     try {
       const chat = await createChat(agentId);
@@ -327,24 +375,30 @@ export default function ChatPage() {
 
   return (
     <div className="chat-console">
-      <Card className="chat-sidebar" title="Console 会话">
-        <Text type="secondary">当前 Agent</Text>
+      <Card className="chat-sidebar" title="统一会话">
+        <Text type="secondary">会话范围</Text>
         <Select
           className="full-width chat-agent-select"
           value={agentId}
           loading={loading}
-          options={agents.map((agent) => ({ value: agent.id, label: agent.name }))}
+          options={[
+            { value: ALL_AGENTS, label: "全部 Agent / 全部 Channel" },
+            ...agents.map((agent) => ({ value: agent.id, label: agent.name })),
+          ]}
           onChange={setAgentId}
         />
-        <Button
-          className="full-width"
-          type="primary"
-          loading={creating}
-          disabled={!agentId}
-          onClick={() => void addChat()}
-        >
-          新建会话
-        </Button>
+        <Space.Compact block>
+          <Button
+            className="full-width"
+            type="primary"
+            loading={creating}
+            disabled={agentId === ALL_AGENTS}
+            onClick={() => void addChat()}
+          >
+            新建网页会话
+          </Button>
+          <Button onClick={() => void refreshChats()}>刷新</Button>
+        </Space.Compact>
         <List
           className="chat-session-list"
           loading={loading}
@@ -356,8 +410,13 @@ export default function ChatPage() {
               onClick={() => setChatId(chat.id)}
             >
               <div>
-                <Text strong={chat.id === chatId}>{chat.title}</Text>
-                <Text type="secondary">{formatTime(chat.updated_at)}</Text>
+                <Space size={6} wrap>
+                  <Text strong={chat.id === chatId}>{chat.title}</Text>
+                  <ChannelTag channel={chat.channel} />
+                </Space>
+                <Text type="secondary">
+                  {chat.agent_name} · {chat.channel_name ?? "网页控制台"} · {formatTime(chat.updated_at)}
+                </Text>
               </div>
             </List.Item>
           )}
@@ -375,7 +434,7 @@ export default function ChatPage() {
               <div>
                 <Title level={4}>{detail.session.title}</Title>
                 <Text type="secondary">
-                  {detail.session.agent_name} · console · 历史已持久化
+                  {detail.session.agent_name} · {sourceDescription(detail.session)} · 历史已持久化
                 </Text>
               </div>
               <Space wrap>
@@ -391,7 +450,13 @@ export default function ChatPage() {
                 detail.messages.map((item) => (
                   <article key={item.id} className={`message-bubble ${item.role}`}>
                     <Space>
-                      <Text strong>{item.role === "user" ? "你" : detail.session.agent_name}</Text>
+                      <Text strong>
+                        {item.role === "user"
+                          ? detail.session.channel === "console"
+                            ? "你"
+                            : detail.session.external_user_id ?? "企业微信用户"
+                          : detail.session.agent_name}
+                      </Text>
                       {item.status === "partial" && <Tag color="orange">部分回答</Tag>}
                     </Space>
                     <Paragraph>{item.content}</Paragraph>
@@ -433,44 +498,60 @@ export default function ChatPage() {
               )}
             </div>
 
-            <div className="chat-composer">
-              <TextArea
-                value={input}
-                disabled={Boolean(activeRun)}
-                placeholder="输入消息；⌘/Ctrl + Enter 发送"
-                autoSize={{ minRows: 3, maxRows: 8 }}
-                maxLength={20_000}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                    event.preventDefault();
-                    void send();
-                  }
-                }}
-              />
-              <div className="composer-actions">
-                <Text type="secondary">
-                  {activeRun
-                    ? `Run ${activeRun.id} · ${activeRun.model_name}`
-                    : "刷新页面后仍可恢复消息和未结束 Run"}
-                </Text>
-                <Space>
-                  {activeRun && (
-                    <Button danger onClick={() => void stop()}>
-                      停止生成
+            {detail.session.channel === "console" ? (
+              <div className="chat-composer">
+                <TextArea
+                  value={input}
+                  disabled={Boolean(activeRun)}
+                  placeholder="输入消息；⌘/Ctrl + Enter 发送"
+                  autoSize={{ minRows: 3, maxRows: 8 }}
+                  maxLength={20_000}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault();
+                      void send();
+                    }
+                  }}
+                />
+                <div className="composer-actions">
+                  <Text type="secondary">
+                    {activeRun
+                      ? `Run ${activeRun.id} · ${activeRun.model_name}`
+                      : "刷新页面后仍可恢复消息和未结束 Run"}
+                  </Text>
+                  <Space>
+                    {activeRun && (
+                      <Button danger onClick={() => void stop()}>
+                        停止生成
+                      </Button>
+                    )}
+                    <Button
+                      type="primary"
+                      loading={sending}
+                      disabled={!input.trim() || Boolean(activeRun)}
+                      onClick={() => void send()}
+                    >
+                      发送
                     </Button>
-                  )}
-                  <Button
-                    type="primary"
-                    loading={sending}
-                    disabled={!input.trim() || Boolean(activeRun)}
-                    onClick={() => void send()}
-                  >
-                    发送
-                  </Button>
-                </Space>
+                  </Space>
+                </div>
               </div>
-            </div>
+            ) : (
+              <Alert
+                type="info"
+                showIcon
+                message="这是外部 Channel 会话的只读镜像"
+                description={`这里展示完整历史与运行审计。请从${detail.session.channel_name ?? "企业微信"}继续发送消息，网页不会伪造外部用户输入。`}
+                action={
+                  activeRun ? (
+                    <Button danger size="small" onClick={() => void stop()}>
+                      停止当前 Run
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )}
 
             {!!detail.runs.length && (
               <div className="run-audit">
@@ -536,6 +617,22 @@ function RunStatusTag({ status }: { status: RunStatus }) {
     cancelled: "orange",
   };
   return <Tag color={color[status]}>{status}</Tag>;
+}
+
+function ChannelTag({ channel }: { channel: ChatSession["channel"] }) {
+  return channel === "console" ? (
+    <Tag color="blue">网页</Tag>
+  ) : (
+    <Tag color="orange">企业微信</Tag>
+  );
+}
+
+function sourceDescription(session: ChatSession): string {
+  if (session.channel === "console") return "网页控制台";
+  const mode = session.channel_kind === "wecom_bot" ? "智能机器人" : "自建应用";
+  const channel = session.channel_name ?? "企业微信 Channel";
+  const user = session.external_user_id ? ` · 用户 ${session.external_user_id}` : "";
+  return `${channel} · ${mode}${user}`;
 }
 
 function ToolStatusTag({ status }: { status: ToolCallStatus }) {
