@@ -17,7 +17,15 @@ from pawteam_api.chat_schemas import (
     RunCreate,
     RunResponse,
 )
-from pawteam_api.models import Agent, AgentRun, ChatSession, Message, ProviderModel
+from pawteam_api.models import (
+    Agent,
+    AgentRun,
+    ChatSession,
+    Message,
+    ProviderModel,
+    ToolCall,
+)
+from pawteam_api.tool_schemas import ToolCallResponse
 
 ACTIVE_RUN_STATUSES = ("queued", "running", "cancelling")
 TERMINAL_RUN_STATUSES = ("completed", "failed", "cancelled")
@@ -101,10 +109,23 @@ class ChatService:
                 .order_by(AgentRun.created_at)
             )
         ).all()
+        run_ids = [run.id for run in runs]
+        tool_calls = (
+            (
+                await self.session.scalars(
+                    select(ToolCall)
+                    .where(ToolCall.run_id.in_(run_ids))
+                    .order_by(ToolCall.created_at)
+                )
+            ).all()
+            if run_ids
+            else []
+        )
         return ChatDetailResponse(
             session=self._session_response(chat, agent_name),
             messages=[self._message_response(message) for message in messages],
             runs=[run_response(run) for run in runs],
+            tool_calls=[tool_call_response(tool_call) for tool_call in tool_calls],
         )
 
     @staticmethod
@@ -250,4 +271,23 @@ def run_response(run: AgentRun) -> RunResponse:
         created_at=run.created_at,
         started_at=run.started_at,
         finished_at=run.finished_at,
+    )
+
+
+def tool_call_response(tool_call: ToolCall) -> ToolCallResponse:
+    return ToolCallResponse(
+        id=tool_call.id,
+        run_id=tool_call.run_id,
+        provider_call_id=tool_call.provider_call_id,
+        tool_name=tool_call.tool_name,
+        arguments=dict(tool_call.arguments_json),
+        status=tool_call.status,
+        result=(
+            dict(tool_call.result_json) if tool_call.result_json is not None else None
+        ),
+        error_message=tool_call.error_message,
+        started_at=tool_call.started_at,
+        finished_at=tool_call.finished_at,
+        duration_ms=tool_call.duration_ms,
+        created_at=tool_call.created_at,
     )

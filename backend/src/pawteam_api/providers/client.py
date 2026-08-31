@@ -4,12 +4,26 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from typing import Literal
 
 import httpx
 
 
 class ProviderRequestError(RuntimeError):
     """A safe-to-display upstream Provider error."""
+
+
+@dataclass(frozen=True)
+class ProviderTurnEvent:
+    """One normalized text or function-call delta from a streaming response."""
+
+    kind: Literal["text_delta", "tool_call_delta"]
+    content: str = ""
+    index: int = 0
+    call_id: str = ""
+    name: str = ""
+    arguments: str = ""
 
 
 class OpenAICompatibleClient:
@@ -121,12 +135,32 @@ class OpenAICompatibleClient:
         messages: list[dict[str, str]],
         temperature: float,
     ) -> AsyncIterator[str]:
-        payload = {
+        async for event in self.stream_turn(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            tools=None,
+        ):
+            if event.kind == "text_delta" and event.content:
+                yield event.content
+
+    async def stream_turn(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, object]],
+        temperature: float,
+        tools: list[dict[str, object]] | None,
+    ) -> AsyncIterator[ProviderTurnEvent]:
+        payload: dict[str, object] = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
             "stream": True,
         }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -146,11 +180,36 @@ class OpenAICompatibleClient:
                             continue
                         try:
                             chunk = json.loads(data)
-                            content = chunk["choices"][0]["delta"].get("content")
+                            delta = chunk["choices"][0]["delta"]
                         except (KeyError, IndexError, TypeError, json.JSONDecodeError):
                             continue
+                        if not isinstance(delta, dict):
+                            continue
+                        content = delta.get("content")
                         if content:
-                            yield str(content)
+                            yield ProviderTurnEvent(
+                                kind="text_delta", content=str(content)
+                            )
+                        tool_calls = delta.get("tool_calls", [])
+                        if not isinstance(tool_calls, list):
+                            continue
+                        for tool_call in tool_calls:
+                            if not isinstance(tool_call, dict):
+                                continue
+                            function = tool_call.get("function", {})
+                            if not isinstance(function, dict):
+                                function = {}
+                            try:
+                                index = int(tool_call.get("index", 0))
+                            except (TypeError, ValueError):
+                                index = 0
+                            yield ProviderTurnEvent(
+                                kind="tool_call_delta",
+                                index=index,
+                                call_id=str(tool_call.get("id", "") or ""),
+                                name=str(function.get("name", "") or ""),
+                                arguments=str(function.get("arguments", "") or ""),
+                            )
         except httpx.TimeoutException as exc:
             raise ProviderRequestError("Provider stream timed out") from exc
         except httpx.RequestError as exc:

@@ -25,11 +25,19 @@ import {
   type ChatDetail,
   type ChatSession,
   type RunStatus,
+  type ToolCallStatus,
 } from "../api/chats";
 
 const { Paragraph, Text, Title } = Typography;
 const { TextArea } = Input;
 const ACTIVE_STATUSES: RunStatus[] = ["queued", "running", "cancelling"];
+
+interface LiveToolEvent {
+  id: string;
+  name: string;
+  status: ToolCallStatus;
+  message?: string;
+}
 
 export default function ChatPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -43,6 +51,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [activeRun, setActiveRun] = useState<AgentRun>();
   const [liveOutput, setLiveOutput] = useState("");
+  const [liveToolEvents, setLiveToolEvents] = useState<LiveToolEvent[]>([]);
   const [streamState, setStreamState] = useState("未连接");
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -68,6 +77,7 @@ export default function ChatPage() {
     eventSourceRef.current?.close();
     setActiveRun(undefined);
     setLiveOutput("");
+    setLiveToolEvents([]);
     setDetail(undefined);
     if (!agentId) {
       setChats([]);
@@ -97,6 +107,7 @@ export default function ChatPage() {
     eventSourceRef.current?.close();
     setActiveRun(undefined);
     setLiveOutput("");
+    setLiveToolEvents([]);
     if (!chatId) {
       setDetail(undefined);
       return;
@@ -128,6 +139,7 @@ export default function ChatPage() {
     eventSourceRef.current?.close();
     setActiveRun(run);
     setLiveOutput("");
+    setLiveToolEvents([]);
     setStreamState("正在连接 SSE");
     const source = new EventSource(`/api/runs/${run.id}/events`);
     eventSourceRef.current = source;
@@ -143,6 +155,21 @@ export default function ChatPage() {
       if (typeof data.content === "string") {
         setLiveOutput((current) => current + data.content);
       }
+    });
+    source.addEventListener("tool.requested", (event) => {
+      updateLiveTool(event, "requested");
+    });
+    source.addEventListener("tool.started", (event) => {
+      updateLiveTool(event, "running");
+    });
+    source.addEventListener("tool.completed", (event) => {
+      updateLiveTool(event, "completed");
+    });
+    source.addEventListener("tool.failed", (event) => {
+      updateLiveTool(event, "failed");
+    });
+    source.addEventListener("tool.rejected", (event) => {
+      updateLiveTool(event, "rejected");
     });
     source.addEventListener("run.completed", () => {
       finishStream(source, selectedChatId, "已完成");
@@ -160,6 +187,27 @@ export default function ChatPage() {
     };
   };
 
+  const updateLiveTool = (event: Event, status: ToolCallStatus) => {
+    const data = parseEvent(event);
+    const id = typeof data.tool_call_id === "string" ? data.tool_call_id : "";
+    const name = typeof data.tool_name === "string" ? data.tool_name : "unknown";
+    if (!id) return;
+    setLiveToolEvents((current) => {
+      const next = current.filter((item) => item.id !== id);
+      return [
+        ...next,
+        {
+          id,
+          name,
+          status,
+          message: typeof data.message === "string" ? data.message : undefined,
+        },
+      ];
+    });
+    if (status === "running") setStreamState(`正在执行 Tool：${name}`);
+    if (status === "completed") setStreamState("Tool 已完成，模型继续生成");
+  };
+
   const finishStream = (
     source: EventSource,
     selectedChatId: string,
@@ -170,6 +218,7 @@ export default function ChatPage() {
     setStreamState(state);
     setActiveRun(undefined);
     setLiveOutput("");
+    setLiveToolEvents([]);
     void loadDetail(selectedChatId);
     void refreshChats();
   };
@@ -310,6 +359,18 @@ export default function ChatPage() {
                   <Paragraph>{liveOutput || "正在读取人格与会话历史……"}</Paragraph>
                 </article>
               )}
+              {!!liveToolEvents.length && (
+                <div className="tool-live-panel">
+                  <Text strong>当前 Run 的 Tool 调用</Text>
+                  {liveToolEvents.map((item) => (
+                    <div key={item.id} className="tool-row">
+                      <Text code>{item.name}</Text>
+                      <ToolStatusTag status={item.status} />
+                      <Text type="secondary">{item.message ?? "服务端已记录审计事件"}</Text>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="chat-composer">
@@ -366,6 +427,23 @@ export default function ChatPage() {
                 ))}
               </div>
             )}
+            {!!detail.tool_calls.length && (
+              <div className="run-audit">
+                <Text strong>Tool 调用审计</Text>
+                {[...detail.tool_calls].reverse().slice(0, 8).map((toolCall) => (
+                  <div key={toolCall.id} className="tool-row">
+                    <Text code>{toolCall.tool_name}</Text>
+                    <ToolStatusTag status={toolCall.status} />
+                    <Text type="secondary">
+                      {toolCall.error_message ?? JSON.stringify(toolCall.arguments)}
+                    </Text>
+                    <Text type="secondary">
+                      {toolCall.duration_ms === null ? "—" : `${toolCall.duration_ms} ms`}
+                    </Text>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </Card>
@@ -381,6 +459,17 @@ function RunStatusTag({ status }: { status: RunStatus }) {
     completed: "success",
     failed: "error",
     cancelled: "orange",
+  };
+  return <Tag color={color[status]}>{status}</Tag>;
+}
+
+function ToolStatusTag({ status }: { status: ToolCallStatus }) {
+  const color: Record<ToolCallStatus, string> = {
+    requested: "default",
+    running: "processing",
+    completed: "success",
+    failed: "error",
+    rejected: "warning",
   };
   return <Tag color={color[status]}>{status}</Tag>;
 }

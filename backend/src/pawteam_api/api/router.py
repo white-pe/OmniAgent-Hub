@@ -8,6 +8,8 @@ from pawteam_api.api.routes.chats import router as chats_router
 from pawteam_api.api.routes.health import router as health_router
 from pawteam_api.api.routes.providers import router as providers_router
 from pawteam_api.api.routes.runs import router as runs_router
+from pawteam_api.api.routes.skills import router as skills_router
+from pawteam_api.api.routes.tools import router as tools_router
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(health_router)
@@ -16,3 +18,5 @@ api_router.include_router(blueprints_router)
 api_router.include_router(agents_router)
 api_router.include_router(chats_router)
 api_router.include_router(runs_router)
+api_router.include_router(skills_router)
+api_router.include_router(tools_router)

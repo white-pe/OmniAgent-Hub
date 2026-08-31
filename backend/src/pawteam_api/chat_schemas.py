@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from pawteam_api.tool_schemas import ToolCallResponse
+
 ChatStatus = Literal["active", "archived"]
 RunStatus = Literal[
     "queued",
@@ -92,3 +94,4 @@ class ChatDetailResponse(BaseModel):
     session: ChatSessionResponse
     messages: list[MessageResponse]
     runs: list[RunResponse]
+    tool_calls: list[ToolCallResponse]

@@ -84,6 +84,100 @@ class WorkspaceStore:
             temporary.unlink(missing_ok=True)
         return previous_content
 
+    def prepare_skill(
+        self,
+        workspace_path: str,
+        skill_name: str,
+        content: str,
+    ) -> Path:
+        self._validate_skill_name(skill_name)
+        workspace = self._workspace(workspace_path)
+        if not workspace.is_dir():
+            raise WorkspaceError("Agent Workspace does not exist")
+        skills_root = workspace / "skills"
+        skills_root.mkdir(exist_ok=True, mode=0o700)
+        self._harden_permissions(skills_root, 0o700)
+        staging = Path(
+            tempfile.mkdtemp(prefix=f".staging-{skill_name}-", dir=skills_root)
+        )
+        self._harden_permissions(staging, 0o700)
+        try:
+            skill_file = staging / "SKILL.md"
+            skill_file.write_text(content, encoding="utf-8")
+            self._harden_permissions(skill_file, 0o600)
+        except Exception:
+            self.purge(staging)
+            raise
+        return staging
+
+    def finalize_skill(
+        self,
+        staging: Path,
+        workspace_path: str,
+        skill_name: str,
+    ) -> str:
+        self._assert_inside_root(staging)
+        self._validate_skill_name(skill_name)
+        workspace = self._workspace(workspace_path)
+        destination = workspace / "skills" / skill_name
+        self._assert_inside_workspace(destination, workspace)
+        if destination.exists():
+            raise WorkspaceError("Skill directory already exists")
+        os.replace(staging, destination)
+        return f"skills/{skill_name}"
+
+    def read_skill(self, workspace_path: str, skill_path: str) -> str:
+        return self._skill_file(workspace_path, skill_path).read_text(encoding="utf-8")
+
+    def write_skill(
+        self,
+        workspace_path: str,
+        skill_path: str,
+        content: str,
+    ) -> str:
+        destination = self._skill_file(workspace_path, skill_path)
+        return self._atomic_write(destination, content)
+
+    def stage_delete_skill(
+        self,
+        workspace_path: str,
+        skill_path: str,
+    ) -> tuple[Path, Path]:
+        directory = self._skill_directory(workspace_path, skill_path)
+        if not directory.is_dir():
+            raise WorkspaceError("Skill directory does not exist")
+        trashed = directory.parent / f".trash-{uuid4()}"
+        os.replace(directory, trashed)
+        return directory, trashed
+
+    def read_relative(
+        self,
+        workspace_path: str,
+        relative_path: str,
+    ) -> str:
+        workspace = self._workspace(workspace_path)
+        requested = Path(relative_path)
+        if (
+            not relative_path
+            or requested.is_absolute()
+            or any(
+                part in {"", ".", ".."} or part.startswith(".")
+                for part in requested.parts
+            )
+        ):
+            raise WorkspaceError("Invalid relative Workspace file path")
+        try:
+            resolved = (workspace / requested).resolve(strict=True)
+        except (FileNotFoundError, OSError) as exc:
+            raise WorkspaceError("Workspace file does not exist") from exc
+        self._assert_inside_workspace(resolved, workspace)
+        if not resolved.is_file():
+            raise WorkspaceError("Workspace path is not a file")
+        try:
+            return resolved.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise WorkspaceError("Workspace file is not valid UTF-8 text") from exc
+
     def stage_delete(self, workspace_path: str) -> tuple[Path, Path]:
         original = self._workspace(workspace_path)
         if not original.is_dir():
@@ -119,6 +213,22 @@ class WorkspaceStore:
             raise WorkspaceError(f"Workspace file {filename} does not exist")
         return path
 
+    def _skill_directory(self, workspace_path: str, skill_path: str) -> Path:
+        parts = Path(skill_path).parts
+        if len(parts) != 2 or parts[0] != "skills":
+            raise WorkspaceError("Invalid Skill path")
+        self._validate_skill_name(parts[1])
+        workspace = self._workspace(workspace_path)
+        directory = (workspace / "skills" / parts[1]).resolve()
+        self._assert_inside_workspace(directory, workspace)
+        return directory
+
+    def _skill_file(self, workspace_path: str, skill_path: str) -> Path:
+        path = self._skill_directory(workspace_path, skill_path) / "SKILL.md"
+        if not path.is_file():
+            raise WorkspaceError("SKILL.md does not exist")
+        return path
+
     def _assert_inside_root(self, path: Path) -> None:
         resolved = path.resolve()
         if resolved == self.root:
@@ -129,12 +239,32 @@ class WorkspaceStore:
             raise WorkspaceError("Workspace path escapes its configured root") from exc
 
     @staticmethod
+    def _assert_inside_workspace(path: Path, workspace: Path) -> None:
+        resolved = path.resolve()
+        try:
+            resolved.relative_to(workspace.resolve())
+        except ValueError as exc:
+            raise WorkspaceError("Path escapes the Agent Workspace") from exc
+
+    @staticmethod
     def _validate_segment(value: str) -> None:
         valid = value and all(
             character.isalnum() or character in "-_" for character in value
         )
         if not valid or Path(value).name != value:
             raise WorkspaceError("Invalid Workspace path segment")
+
+    @staticmethod
+    def _validate_skill_name(value: str) -> None:
+        valid = (
+            value
+            and len(value) <= 64
+            and value[0].isalnum()
+            and value == value.lower()
+            and all(character.isalnum() or character in "-_" for character in value)
+        )
+        if not valid or Path(value).name != value:
+            raise WorkspaceError("Invalid Skill name")
 
     @staticmethod
     def _templates(name: str, description: str) -> dict[str, str]:
@@ -168,3 +298,20 @@ class WorkspaceStore:
     def _harden_permissions(path: Path, mode: int) -> None:
         if os.name == "posix":
             path.chmod(mode)
+
+    def _atomic_write(self, destination: Path, content: str) -> str:
+        previous_content = destination.read_text(encoding="utf-8")
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+        )
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            self._harden_permissions(temporary, 0o600)
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return previous_content

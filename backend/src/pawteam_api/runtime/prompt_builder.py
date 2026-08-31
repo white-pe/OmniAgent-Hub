@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from pawteam_api.config import Settings
-from pawteam_api.models import Agent, ChatSession, Message
+from pawteam_api.models import Agent, ChatSession, Message, Skill
 from pawteam_api.workspaces.store import WorkspaceStore
 
 
@@ -20,12 +20,26 @@ class PromptBuilder:
         agent: Agent,
         chat: ChatSession,
         messages: list[Message],
+        skills: list[Skill] | None = None,
+        tool_names: set[str] | None = None,
     ) -> list[dict[str, str]]:
-        system_prompt = self._system_prompt(agent, chat)
+        system_prompt = self._system_prompt(
+            agent,
+            chat,
+            skills=skills or [],
+            tool_names=tool_names or set(),
+        )
         history = self._bounded_history(messages)
         return [{"role": "system", "content": system_prompt}, *history]
 
-    def _system_prompt(self, agent: Agent, chat: ChatSession) -> str:
+    def _system_prompt(
+        self,
+        agent: Agent,
+        chat: ChatSession,
+        *,
+        skills: list[Skill],
+        tool_names: set[str],
+    ) -> str:
         sections = [
             (
                 "平台安全规则",
@@ -50,6 +64,22 @@ class PromptBuilder:
                     ),
                 )
             )
+        for skill in skills:
+            content = self.workspace_store.read_skill(agent.workspace_path, skill.path)
+            sections.append(
+                (
+                    f"已启用 Skill / {skill.name}",
+                    (
+                        f"用途: {skill.description}\n\n"
+                        + self._truncate(
+                            content,
+                            self.settings.runtime_skill_chars,
+                            f"Skill {skill.name} 已截断",
+                        )
+                    ),
+                )
+            )
+        available_tools = ", ".join(sorted(tool_names)) or "无"
         sections.append(
             (
                 "当前运行环境",
@@ -58,7 +88,9 @@ class PromptBuilder:
                     f"频道: {chat.channel}\n"
                     f"会话 ID: {chat.id}\n"
                     f"Workspace: {agent.workspace_path}\n"
-                    "当前阶段没有可执行 Tool 或 Skill。"
+                    f"服务端已授权 Tool: {available_tools}\n"
+                    "Skill 是工作方法与约束，不代表执行权限；只有服务端声明并"
+                    "再次校验通过的 Tool 才能执行。"
                 ),
             )
         )

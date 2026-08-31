@@ -9,7 +9,8 @@ codex/stage-1-provider       阶段 1 Provider 快照
 codex/stage-2-agent          阶段 2 Agent 与 Workspace 快照
 codex/stage-3-blueprint      阶段 3 自然语言 Blueprint 快照
 codex/stage-4-runtime        阶段 4 会话、Run 与 SSE 快照
-codex/stage-5-tools-skills   未来阶段 5
+codex/stage-5-tools-skills   阶段 5 Skills、Tools 与 Tool Calling 快照
+codex/stage-6-team           未来阶段 6
 ```
 
 每个阶段分支代表“完成该阶段后，项目应该是什么样”。下一阶段从上一阶段分支创建，形成线性提交历史。
@@ -77,4 +78,11 @@ git switch -c codex/stage-4-runtime
 ```bash
 git switch codex/stage-4-runtime
 git switch -c codex/stage-5-tools-skills
+```
+
+完成阶段 5 后，阶段 6 从阶段 5 创建：
+
+```bash
+git switch codex/stage-5-tools-skills
+git switch -c codex/stage-6-team
 ```

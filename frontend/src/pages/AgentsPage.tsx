@@ -34,6 +34,7 @@ import {
 } from "../api/agents";
 import { listProviders, type Provider } from "../api/providers";
 import BlueprintCreator from "../components/BlueprintCreator";
+import AgentCapabilities from "../components/AgentCapabilities";
 
 const { Paragraph, Text } = Typography;
 const { TextArea } = Input;
@@ -53,6 +54,7 @@ export default function AgentsPage() {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<Agent | null>(null);
   const [workspaceAgent, setWorkspaceAgent] = useState<Agent | null>(null);
+  const [capabilityAgent, setCapabilityAgent] = useState<Agent | null>(null);
   const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
@@ -254,6 +256,9 @@ export default function AgentsPage() {
                     <Text>v{agent.version}</Text>
                   </div>
                   <div className="agent-actions">
+                    <Button onClick={() => setCapabilityAgent(agent)}>
+                      配置 Skills / Tools
+                    </Button>
                     <Button type="primary" onClick={() => openWorkspace(agent)}>
                       编辑 Workspace
                     </Button>
@@ -336,6 +341,10 @@ export default function AgentsPage() {
           autoSize={{ minRows: 18, maxRows: 30 }}
         />
       </Modal>
+      <AgentCapabilities
+        agent={capabilityAgent}
+        onClose={() => setCapabilityAgent(null)}
+      />
     </div>
   );
 }

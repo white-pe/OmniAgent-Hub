@@ -47,10 +47,33 @@ export interface AgentRun {
   finished_at: string | null;
 }
 
+export type ToolCallStatus =
+  | "requested"
+  | "running"
+  | "completed"
+  | "failed"
+  | "rejected";
+
+export interface ToolCall {
+  id: string;
+  run_id: string;
+  provider_call_id: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  status: ToolCallStatus;
+  result: Record<string, unknown> | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
 export interface ChatDetail {
   session: ChatSession;
   messages: ChatMessage[];
   runs: AgentRun[];
+  tool_calls: ToolCall[];
 }
 
 export async function listChats(agentId?: string): Promise<ChatSession[]> {

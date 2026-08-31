@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
@@ -18,11 +19,14 @@ from pawteam_api.config import Settings
 from pawteam_api.models import (
     Agent,
     AgentRun,
+    AgentTool,
     ChatSession,
     Message,
     RunEvent,
+    Skill,
+    ToolCall,
 )
-from pawteam_api.providers.client import ProviderRequestError
+from pawteam_api.providers.client import ProviderRequestError, ProviderTurnEvent
 from pawteam_api.providers.service import (
     ProviderConflictError,
     ProviderModelNotFoundError,
@@ -32,19 +36,21 @@ from pawteam_api.providers.service import (
 from pawteam_api.runtime.prompt_builder import PromptBuilder
 from pawteam_api.runtime.service import TERMINAL_RUN_STATUSES
 from pawteam_api.security.secret_store import SecretNotFoundError, SecretStore
+from pawteam_api.tools.registry import ToolContext, ToolRegistry
 from pawteam_api.workspaces.store import WorkspaceError, WorkspaceStore
 
 logger = logging.getLogger(__name__)
 
 
 class RuntimeProviderClient(Protocol):
-    def stream_messages(
+    def stream_turn(
         self,
         *,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, object]],
         temperature: float,
-    ) -> AsyncIterator[str]: ...
+        tools: list[dict[str, object]] | None,
+    ) -> AsyncIterator[ProviderTurnEvent]: ...
 
 
 ProviderClientFactory = Callable[[str, str, float], RuntimeProviderClient]
@@ -58,7 +64,20 @@ class RunCancelledError(RuntimeError):
 class PreparedRun:
     client: RuntimeProviderClient
     model_name: str
-    messages: list[dict[str, str]]
+    messages: list[dict[str, object]]
+    agent_id: str
+    workspace_path: str
+    channel: str
+    enabled_tools: set[str]
+    tool_definitions: list[dict[str, object]]
+
+
+@dataclass
+class PendingToolCall:
+    index: int
+    call_id: str = ""
+    name: str = ""
+    arguments: str = ""
 
 
 class RunManager:
@@ -69,12 +88,14 @@ class RunManager:
         settings: Settings,
         secret_store: SecretStore,
         workspace_store: WorkspaceStore,
+        tool_registry: ToolRegistry,
         provider_client_factory: ProviderClientFactory,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings
         self.secret_store = secret_store
         self.workspace_store = workspace_store
+        self.tool_registry = tool_registry
         self.provider_client_factory = provider_client_factory
         self.prompt_builder = PromptBuilder(settings, workspace_store)
         self.tasks: dict[str, asyncio.Task[None]] = {}
@@ -135,16 +156,68 @@ class RunManager:
             if prepared is None:
                 return
             received_content = False
+            conversation = list(prepared.messages)
             async with asyncio.timeout(self.settings.run_timeout_seconds):
-                async for content in prepared.client.stream_messages(
-                    model=prepared.model_name,
-                    messages=prepared.messages,
-                    temperature=0.7,
-                ):
-                    if not content:
-                        continue
-                    received_content = True
-                    await self._append_delta(run_id, content)
+                for _step in range(self.settings.runtime_max_steps):
+                    turn_text = ""
+                    pending_calls: dict[int, PendingToolCall] = {}
+                    async for event in prepared.client.stream_turn(
+                        model=prepared.model_name,
+                        messages=conversation,
+                        temperature=0.7,
+                        tools=prepared.tool_definitions or None,
+                    ):
+                        if event.kind == "text_delta":
+                            if not event.content:
+                                continue
+                            received_content = True
+                            turn_text += event.content
+                            await self._append_delta(run_id, event.content)
+                            continue
+                        call = pending_calls.setdefault(
+                            event.index, PendingToolCall(index=event.index)
+                        )
+                        call.call_id += event.call_id
+                        call.name += event.name
+                        call.arguments += event.arguments
+
+                    if not pending_calls:
+                        if not turn_text:
+                            raise ProviderRequestError(
+                                "Provider returned no response content"
+                            )
+                        break
+
+                    tool_calls = self._assistant_tool_calls(run_id, pending_calls)
+                    conversation.append(
+                        {
+                            "role": "assistant",
+                            "content": turn_text or None,
+                            "tool_calls": tool_calls,
+                        }
+                    )
+                    for pending, tool_call in zip(
+                        sorted(pending_calls.values(), key=lambda item: item.index),
+                        tool_calls,
+                        strict=True,
+                    ):
+                        result = await self._execute_tool(
+                            run_id=run_id,
+                            pending=pending,
+                            provider_call_id=str(tool_call["id"]),
+                            prepared=prepared,
+                        )
+                        conversation.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call["id"],
+                                "content": result,
+                            }
+                        )
+                else:
+                    raise ProviderRequestError(
+                        "Agent exceeded the maximum number of Tool steps"
+                    )
             if not received_content:
                 raise ProviderRequestError("Provider returned no response content")
             await self._finish_completed(run_id)
@@ -197,10 +270,34 @@ class RunManager:
                     .order_by(Message.sequence)
                 )
             ).all()
+            skills = (
+                await session.scalars(
+                    select(Skill)
+                    .where(Skill.agent_id == agent.id, Skill.enabled.is_(True))
+                    .order_by(Skill.created_at, Skill.name)
+                )
+            ).all()
+            channel_skills = [
+                skill for skill in skills if chat.channel in skill.channel_scope_json
+            ]
+            enabled_tools = {
+                assignment.tool_name
+                for assignment in (
+                    await session.scalars(
+                        select(AgentTool).where(
+                            AgentTool.agent_id == agent.id,
+                            AgentTool.enabled.is_(True),
+                        )
+                    )
+                ).all()
+                if self.tool_registry.contains(assignment.tool_name)
+            }
             messages = self.prompt_builder.build(
                 agent=agent,
                 chat=chat,
                 messages=list(history),
+                skills=list(channel_skills),
+                tool_names=enabled_tools,
             )
             now = self._utc_now()
             run.status = "running"
@@ -220,8 +317,144 @@ class RunManager:
             return PreparedRun(
                 client=client,
                 model_name=runtime.model_name,
-                messages=messages,
+                messages=[dict(message) for message in messages],
+                agent_id=agent.id,
+                workspace_path=agent.workspace_path,
+                channel=chat.channel,
+                enabled_tools=enabled_tools,
+                tool_definitions=self.tool_registry.openai_definitions(enabled_tools),
             )
+
+    async def _execute_tool(
+        self,
+        *,
+        run_id: str,
+        pending: PendingToolCall,
+        provider_call_id: str,
+        prepared: PreparedRun,
+    ) -> str:
+        tool_call_id = str(uuid4())
+        requested_arguments = self._arguments_for_audit(pending.arguments)
+        async with self.session_factory() as session:
+            session.add(
+                ToolCall(
+                    id=tool_call_id,
+                    run_id=run_id,
+                    provider_call_id=provider_call_id,
+                    tool_name=pending.name,
+                    arguments_json=requested_arguments,
+                    status="requested",
+                )
+            )
+            await self._add_event(
+                session,
+                run_id,
+                "tool.requested",
+                {
+                    "run_id": run_id,
+                    "tool_call_id": tool_call_id,
+                    "tool_name": pending.name,
+                    "arguments": requested_arguments,
+                },
+            )
+            await session.commit()
+
+        started_at = self._utc_now()
+        async with self.session_factory() as session:
+            tool_call = await session.get(ToolCall, tool_call_id)
+            if tool_call is None:
+                raise RuntimeError("Tool call audit record disappeared")
+            tool_call.status = "running"
+            tool_call.started_at = started_at
+            await self._add_event(
+                session,
+                run_id,
+                "tool.started",
+                {
+                    "run_id": run_id,
+                    "tool_call_id": tool_call_id,
+                    "tool_name": pending.name,
+                },
+            )
+            await session.commit()
+
+        result = await self.tool_registry.execute(
+            name=pending.name,
+            raw_arguments=pending.arguments,
+            enabled_names=prepared.enabled_tools,
+            context=ToolContext(
+                agent_id=prepared.agent_id,
+                run_id=run_id,
+                workspace_path=prepared.workspace_path,
+                channel=prepared.channel,
+            ),
+        )
+        finished_at = self._utc_now()
+        duration_ms = max(0, round((finished_at - started_at).total_seconds() * 1000))
+        async with self.session_factory() as session:
+            tool_call = await session.get(ToolCall, tool_call_id)
+            if tool_call is None:
+                raise RuntimeError("Tool call audit record disappeared")
+            tool_call.arguments_json = result.arguments
+            tool_call.status = result.status
+            tool_call.result_json = result.payload
+            tool_call.error_message = result.error_message
+            tool_call.finished_at = finished_at
+            tool_call.duration_ms = duration_ms
+            event_type = f"tool.{result.status}"
+            await self._add_event(
+                session,
+                run_id,
+                event_type,
+                {
+                    "run_id": run_id,
+                    "tool_call_id": tool_call_id,
+                    "tool_name": pending.name,
+                    "status": result.status,
+                    "duration_ms": duration_ms,
+                    "result_preview": self._event_preview(result.payload),
+                    **(
+                        {"message": result.error_message}
+                        if result.error_message is not None
+                        else {}
+                    ),
+                },
+            )
+            await session.commit()
+        return json.dumps(result.payload, ensure_ascii=False, default=str)
+
+    @staticmethod
+    def _assistant_tool_calls(
+        run_id: str,
+        pending_calls: dict[int, PendingToolCall],
+    ) -> list[dict[str, object]]:
+        calls: list[dict[str, object]] = []
+        for pending in sorted(pending_calls.values(), key=lambda item: item.index):
+            provider_call_id = pending.call_id or f"call_{run_id}_{pending.index}"
+            calls.append(
+                {
+                    "id": provider_call_id,
+                    "type": "function",
+                    "function": {
+                        "name": pending.name,
+                        "arguments": pending.arguments or "{}",
+                    },
+                }
+            )
+        return calls
+
+    def _event_preview(self, payload: dict[str, object]) -> str:
+        serialized = json.dumps(payload, ensure_ascii=False, default=str)
+        return serialized[: self.settings.tool_event_preview_chars]
+
+    def _arguments_for_audit(self, raw_arguments: str) -> dict[str, object]:
+        try:
+            decoded = json.loads(raw_arguments or "{}")
+        except json.JSONDecodeError:
+            decoded = None
+        if isinstance(decoded, dict):
+            return {str(key): value for key, value in decoded.items()}
+        return {"_raw": raw_arguments[: self.settings.tool_event_preview_chars]}
 
     async def _append_delta(self, run_id: str, content: str) -> None:
         async with self.session_factory() as session:
@@ -265,6 +498,42 @@ class RunManager:
             run.error_message = error_message
             run.finished_at = now
             run.duration_ms = self._duration_ms(run, now)
+
+            unfinished_tool_calls = (
+                await session.scalars(
+                    select(ToolCall).where(
+                        ToolCall.run_id == run.id,
+                        ToolCall.status.in_(("requested", "running")),
+                    )
+                )
+            ).all()
+            for tool_call in unfinished_tool_calls:
+                tool_call.status = "failed"
+                tool_call.error_message = (
+                    f"Run became {status} before Tool execution finished"
+                )
+                tool_call.finished_at = now
+                tool_call.duration_ms = (
+                    max(
+                        0,
+                        round((now - tool_call.started_at).total_seconds() * 1000),
+                    )
+                    if tool_call.started_at is not None
+                    else 0
+                )
+                await self._add_event(
+                    session,
+                    run.id,
+                    "tool.failed",
+                    {
+                        "run_id": run.id,
+                        "tool_call_id": tool_call.id,
+                        "tool_name": tool_call.tool_name,
+                        "status": "failed",
+                        "duration_ms": tool_call.duration_ms,
+                        "message": tool_call.error_message,
+                    },
+                )
 
             if run.output_text:
                 assistant_exists = await session.scalar(

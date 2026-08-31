@@ -8,42 +8,45 @@ from pawteam_api.config import Settings
 from pawteam_api.database import create_database_engine
 from pawteam_api.main import create_app
 from pawteam_api.models import Base
+from pawteam_api.providers.client import ProviderTurnEvent
 
 
 class RecordingRuntimeClient:
-    calls: list[list[dict[str, str]]] = []
+    calls: list[list[dict[str, object]]] = []
 
     def __init__(self, base_url: str, api_key: str, timeout_seconds: float) -> None:
         del base_url, api_key, timeout_seconds
 
-    async def stream_messages(
+    async def stream_turn(
         self,
         *,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, object]],
         temperature: float,
-    ) -> AsyncIterator[str]:
-        del model, temperature
+        tools: list[dict[str, object]] | None,
+    ) -> AsyncIterator[ProviderTurnEvent]:
+        del model, temperature, tools
         self.calls.append(messages)
         system_prompt = messages[0]["content"]
         identity = "研究助手" if "Research Agent" in system_prompt else "写作助手"
-        yield identity
-        yield "已收到"
+        yield ProviderTurnEvent(kind="text_delta", content=identity)
+        yield ProviderTurnEvent(kind="text_delta", content="已收到")
 
 
 class SlowRuntimeClient:
     def __init__(self, base_url: str, api_key: str, timeout_seconds: float) -> None:
         del base_url, api_key, timeout_seconds
 
-    async def stream_messages(
+    async def stream_turn(
         self,
         *,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, object]],
         temperature: float,
-    ) -> AsyncIterator[str]:
-        del model, messages, temperature
-        yield "部分回答"
+        tools: list[dict[str, object]] | None,
+    ) -> AsyncIterator[ProviderTurnEvent]:
+        del model, messages, temperature, tools
+        yield ProviderTurnEvent(kind="text_delta", content="部分回答")
         await asyncio.Event().wait()
 
 

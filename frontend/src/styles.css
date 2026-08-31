@@ -189,6 +189,22 @@ body {
   align-items: center;
 }
 
+.tool-live-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-left: 3px solid #7c4dff;
+  border-radius: 8px;
+  background: #f7f3ff;
+}
+
+.tool-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 190px) 100px 1fr 90px;
+  gap: 10px;
+  align-items: center;
+}
+
 .agent-form-card .ant-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -222,6 +238,40 @@ body {
 .workspace-editor textarea {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   line-height: 1.7;
+}
+
+.capability-loading {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+}
+
+.capability-tabs {
+  margin-top: 16px;
+}
+
+.capability-list {
+  margin-top: 14px;
+}
+
+.capability-list .ant-list-item {
+  padding: 6px 0;
+}
+
+.capability-card {
+  width: 100%;
+}
+
+.capability-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.capability-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .provider-form-card .ant-form {

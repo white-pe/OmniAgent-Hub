@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "PawTeam Lite"
-    version: str = "0.5.0"
+    version: str = "0.6.0"
     environment: str = "development"
     host: str = "127.0.0.1"
     port: int = 8000
@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     runtime_history_messages: int = 30
     runtime_history_chars: int = 40_000
     runtime_workspace_file_chars: int = 15_000
+    runtime_skill_chars: int = 10_000
+    runtime_max_steps: int = 8
+    tool_timeout_seconds: float = 10.0
+    tool_result_max_chars: int = 20_000
+    tool_event_preview_chars: int = 1_000
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",

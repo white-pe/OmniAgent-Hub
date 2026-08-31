@@ -14,11 +14,11 @@ export default function App() {
     <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: "#ff7a1a" } }}>
       <main className="shell">
         <section className="hero">
-          <Text className="eyebrow">PAWTEAM LITE · STAGE 4</Text>
-          <Title>让 Agent 带着自己的身份，在可恢复的会话中真正工作。</Title>
+          <Text className="eyebrow">PAWTEAM LITE · STAGE 5</Text>
+          <Title>让 Agent 按 Skill 思考，并在授权边界内使用 Tool。</Title>
           <Paragraph>
-            本阶段加入 Session、Message、Run、PromptBuilder 和可重放 SSE。
-            每次回答都有状态、历史与停止边界，刷新页面后仍能继续查看。
+            本阶段加入可配置 Skill、逐 Agent Tool 权限、模型工具调用循环与持久化审计。
+            模型只能请求服务端声明的能力，真正执行前还要再次通过参数和权限校验。
           </Paragraph>
         </section>
         <Tabs
