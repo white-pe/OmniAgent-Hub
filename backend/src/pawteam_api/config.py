@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "PawTeam Lite"
-    version: str = "0.7.0"
+    version: str = "0.8.0"
     environment: str = "development"
     host: str = "127.0.0.1"
     port: int = 8000
@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     delegation_max_depth: int = 2
     delegation_max_calls_per_root: int = 6
     delegation_task_max_chars: int = 8_000
+    channel_signature_tolerance_seconds: int = 300
+    channel_outbox_lease_seconds: int = 30
+    channel_outbox_max_attempts: int = 5
+    channel_outbox_batch_size: int = 20
+    channel_delivery_timeout_seconds: float = 10.0
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",

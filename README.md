@@ -1,6 +1,6 @@
 # PawTeam Lite
 
-PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前完成到**阶段 6：Team 与受控 Agent 委派**。
+PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前完成到**阶段 7：企业微信 Channel**。
 
 ## 当前能力
 
@@ -11,6 +11,7 @@ PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前完成
 - 阶段 4：多轮 Session/Message、后台 Run、PromptBuilder、SSE 和停止生成；
 - 阶段 5：Workspace Skills、逐 Agent Tool 授权、受控调用循环和完整审计；
 - 阶段 6：Team 成员白名单、协调 Agent、父子 Run 和受控 Agent 委派；
+- 阶段 7：企业微信加密回调、外部会话映射、主动回复和投递审计；
 - `AGENTS.md / SOUL.md / PROFILE.md / MEMORY.md` 可视化编辑；
 - Agent 启停、协调 Agent 标记和配置版本控制；
 - 数据库与文件操作的补偿事务；
@@ -22,7 +23,7 @@ PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前完成
 - Tool 参数二次校验、Workspace 路径隔离、超时、结果截断和越权拒绝。
 - 委派深度、调用预算、祖先环路阻断、子 Agent 权限隔离和委派审计。
 
-外部 Channel 将在后续阶段加入。
+- 企业微信文本消息可绑定普通 Agent 或 Team 协调 Agent。
 
 ## 本地启动
 
@@ -55,7 +56,7 @@ make dev-frontend
 - `Backend Tests`：pytest；
 - `Frontend Dev`：Vite 开发服务器。
 
-进入阶段 6 后，在 PyCharm Terminal 执行：
+进入阶段 7 后，在 PyCharm Terminal 执行：
 
 ```bash
 uv sync
@@ -63,7 +64,7 @@ uv run alembic upgrade head
 uv run alembic current
 ```
 
-预期数据库版本为 `0007 (head)`。然后由你手动运行 `Backend API` 和 `Frontend Dev`。
+预期数据库版本为 `0008 (head)`。然后由你手动运行 `Backend API` 和 `Frontend Dev`。
 
 在“Blueprint 与 Agent”页输入至少 10 个字符的用途描述，选择生成模型。生成只会保存草案；检查并编辑预览后点击“确认并创建 Agent”，才会创建数据库记录和 Workspace。点击取消不会创建 Agent。
 
@@ -72,6 +73,8 @@ uv run alembic current
 在 Agent 卡片点击“配置 Skills / Tools”：Skill 正文保存到该 Agent 的 Workspace，启用后注入系统 Prompt；Tool 来自服务端白名单并默认关闭。授权后，支持 Tool Calling 的 OpenAI-compatible Model 可以在同一 Run 内请求工具，执行结果会回送模型，控制台同时显示实时事件和持久化审计。
 
 在“Team 与委派”页选择一个已标记为协调者的 Agent，并添加至少一个成员。Team 启用后，Runtime 会只向该协调 Agent 提供动态 `delegate_to_agent` Tool。成员任务使用独立子 Run 执行，子 Agent 不继承协调者的 Workspace、Skill 或 Tool 权限，最终结果才回到父 Run 汇总。
+
+在“企业微信 Channel”页填写自建应用的 CorpID、AgentId、Secret 以及回调 Token、EncodingAESKey，并绑定目标 Agent。企业微信后台的回调 URL 需要使用公网 HTTPS 基址加页面显示的 callback path。回调验签解密后会创建或复用内部 Chat，Agent 完成后由 outbound dispatcher 主动回复。
 
 ## Agent 数据边界
 
@@ -89,6 +92,10 @@ data/workspaces/<agent-id>/
 SQLite
   → Skill 元数据、AgentTool 授权、ToolCall 参数/状态/结果审计
   → Team、成员角色、父子 Run 和 Delegation 全链路审计
+  → Channel、外部会话映射、inbound/outbound 消息和投递状态
+
+data/secrets/channel_<channel-id>.secret
+  → Fernet 加密后的企业微信 Token、EncodingAESKey 和应用 Secret
 ```
 
 Agent 名称、描述、Provider 和 Model 以 SQLite 为唯一真相；Markdown 由 Runtime 的 PromptBuilder 装载为模型上下文。
@@ -112,4 +119,5 @@ docker compose config
 - [阶段 4：会话、Run 与 SSE](docs/stage-4-chat-runtime-and-sse.zh.md)
 - [阶段 5：Skills、Tools 与 Tool Calling](docs/stage-5-tools-and-skills.zh.md)
 - [阶段 6：Team 与受控 Agent 委派](docs/stage-6-team-and-delegation.zh.md)
+- [阶段 7：企业微信 Channel](docs/stage-7-wecom-channel.zh.md)
 - [Git 阶段复盘](docs/git-stage-workflow.zh.md)

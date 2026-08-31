@@ -21,8 +21,10 @@ from pawteam_api.models import (
     Agent,
     AgentRun,
     AgentTool,
+    ChannelMessage,
     ChatSession,
     Delegation,
+    ExternalConversation,
     Message,
     ProviderModel,
     RunEvent,
@@ -72,6 +74,10 @@ class RuntimeProviderClient(Protocol):
 ProviderClientFactory = Callable[[str, str, float], RuntimeProviderClient]
 
 
+class ChannelDeliveryDispatcher(Protocol):
+    def dispatch(self, message_id: str) -> None: ...
+
+
 class RunCancelledError(RuntimeError):
     pass
 
@@ -107,6 +113,7 @@ class RunManager:
         workspace_store: WorkspaceStore,
         tool_registry: ToolRegistry,
         provider_client_factory: ProviderClientFactory,
+        channel_dispatcher: ChannelDeliveryDispatcher | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings
@@ -114,6 +121,7 @@ class RunManager:
         self.workspace_store = workspace_store
         self.tool_registry = tool_registry
         self.provider_client_factory = provider_client_factory
+        self.channel_dispatcher = channel_dispatcher
         self.prompt_builder = PromptBuilder(settings, workspace_store)
         self.tasks: dict[str, asyncio.Task[None]] = {}
 
@@ -864,6 +872,7 @@ class RunManager:
         status: str,
         error_message: str | None,
     ) -> None:
+        outbound_message_id: str | None = None
         async with self.session_factory() as session:
             run = await session.get(AgentRun, run_id)
             if run is None or run.status in TERMINAL_RUN_STATUSES:
@@ -947,6 +956,41 @@ class RunManager:
                             sequence=next_sequence,
                         )
                     )
+            if run.parent_run_id is None:
+                external = await session.scalar(
+                    select(ExternalConversation).where(
+                        ExternalConversation.chat_session_id == run.session_id
+                    )
+                )
+                if external is not None:
+                    inbound = await session.scalar(
+                        select(ChannelMessage).where(
+                            ChannelMessage.run_id == run.id,
+                            ChannelMessage.direction == "inbound",
+                        )
+                    )
+                    if inbound is not None:
+                        inbound.status = status
+                        inbound.error_message = error_message
+                    reply = self._channel_reply(run.output_text, status, error_message)
+                    outbound_message_id = str(uuid4())
+                    session.add(
+                        ChannelMessage(
+                            id=outbound_message_id,
+                            channel_id=external.channel_id,
+                            external_conversation_id=(
+                                external.external_conversation_id
+                            ),
+                            external_user_id=external.external_user_id,
+                            external_message_id=f"run:{run.id}",
+                            direction="outbound",
+                            content=reply,
+                            status="pending",
+                            chat_session_id=run.session_id,
+                            run_id=run.id,
+                            attempts=0,
+                        )
+                    )
             chat = await session.get(ChatSession, run.session_id)
             if chat is not None:
                 chat.updated_at = now
@@ -963,6 +1007,18 @@ class RunManager:
                 data["partial"] = True
             await self._add_event(session, run.id, event_type, data)
             await session.commit()
+        if outbound_message_id is not None and self.channel_dispatcher is not None:
+            self.channel_dispatcher.dispatch(outbound_message_id)
+
+    @staticmethod
+    def _channel_reply(output_text: str, status: str, error_message: str | None) -> str:
+        if output_text:
+            return output_text
+        if status == "cancelled":
+            return "本次任务已取消。"
+        if error_message:
+            return "任务执行失败，请稍后重试或联系管理员查看运行日志。"
+        return "任务未能生成回复，请稍后重试。"
 
     @staticmethod
     async def _add_event(

@@ -41,7 +41,7 @@ class ChatSessionResponse(BaseModel):
     agent_id: str
     agent_name: str
     title: str
-    channel: Literal["console"]
+    channel: Literal["console", "wecom"]
     status: ChatStatus
     created_at: datetime
     updated_at: datetime

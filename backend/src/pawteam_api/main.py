@@ -7,6 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from pawteam_api.api.router import api_router
+from pawteam_api.channels.dispatcher import ChannelDispatcher
+from pawteam_api.channels.wecom_client import WeComApiClient
 from pawteam_api.config import Settings, get_settings
 from pawteam_api.database import create_database_engine, create_session_factory
 from pawteam_api.providers.client import OpenAICompatibleClient
@@ -30,6 +32,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.tool_registry = ToolRegistry(
             resolved_settings, app.state.workspace_store
         )
+        app.state.wecom_client_factory = WeComApiClient
+        app.state.channel_dispatcher = ChannelDispatcher(
+            session_factory=app.state.session_factory,
+            settings=resolved_settings,
+            secret_store=app.state.secret_store,
+            client_factory=lambda timeout: app.state.wecom_client_factory(timeout),
+        )
         app.state.provider_client_factory = OpenAICompatibleClient
         app.state.run_manager = RunManager(
             session_factory=app.state.session_factory,
@@ -40,10 +49,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             provider_client_factory=lambda base_url, api_key, timeout: (
                 app.state.provider_client_factory(base_url, api_key, timeout)
             ),
+            channel_dispatcher=app.state.channel_dispatcher,
         )
         await app.state.run_manager.recover_interrupted_runs()
+        await app.state.channel_dispatcher.recover_pending()
         yield
         await app.state.run_manager.shutdown()
+        await app.state.channel_dispatcher.shutdown()
         await app.state.db_engine.dispose()
 
     application = FastAPI(

@@ -13,8 +13,8 @@ class SkillCreate(BaseModel):
     description: str = Field(min_length=1, max_length=500)
     content: str = Field(min_length=1, max_length=100_000)
     enabled: bool = True
-    channel_scope: list[Literal["console"]] = Field(
-        default_factory=lambda: ["console"], min_length=1
+    channel_scope: list[Literal["console", "wecom"]] = Field(
+        default_factory=lambda: ["console", "wecom"], min_length=1
     )
     config: dict[str, object] = Field(default_factory=dict)
 
@@ -41,7 +41,9 @@ class SkillUpdate(BaseModel):
     description: str | None = Field(default=None, min_length=1, max_length=500)
     content: str | None = Field(default=None, min_length=1, max_length=100_000)
     enabled: bool | None = None
-    channel_scope: list[Literal["console"]] | None = Field(default=None, min_length=1)
+    channel_scope: list[Literal["console", "wecom"]] | None = Field(
+        default=None, min_length=1
+    )
     config: dict[str, object] | None = None
 
     @field_validator("description", "content")

@@ -18,7 +18,7 @@ export interface SkillInput {
   description: string;
   content: string;
   enabled?: boolean;
-  channel_scope?: ["console"];
+  channel_scope?: ("console" | "wecom")[];
   config?: Record<string, unknown>;
 }
 
@@ -40,7 +40,7 @@ export async function createSkill(
 export async function updateSkill(
   agentId: string,
   skill: Skill,
-  input: Pick<SkillInput, "description" | "content">,
+  input: Pick<SkillInput, "description" | "content" | "channel_scope">,
 ): Promise<Skill> {
   return requestJson<Skill>(`/api/agents/${agentId}/skills/${skill.name}`, {
     method: "PUT",

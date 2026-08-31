@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Empty,
   Form,
   Input,
@@ -33,7 +34,10 @@ import { listTools, toggleTool, type ToolAssignment } from "../api/tools";
 const { Paragraph, Text } = Typography;
 const { TextArea } = Input;
 
-type SkillFormValues = Pick<SkillInput, "name" | "description" | "content">;
+type SkillFormValues = Pick<
+  SkillInput,
+  "name" | "description" | "content" | "channel_scope"
+>;
 
 export default function AgentCapabilities({
   agent,
@@ -76,7 +80,12 @@ export default function AgentCapabilities({
 
   const openNewSkill = () => {
     setEditingSkill(null);
-    form.resetFields();
+    form.setFieldsValue({
+      name: undefined,
+      description: undefined,
+      content: undefined,
+      channel_scope: ["console", "wecom"],
+    });
     setSkillEditorOpen(true);
   };
 
@@ -86,6 +95,7 @@ export default function AgentCapabilities({
       name: skill.name,
       description: skill.description,
       content: skill.content,
+      channel_scope: skill.channel_scope as ("console" | "wecom")[],
     });
     setSkillEditorOpen(true);
   };
@@ -98,12 +108,13 @@ export default function AgentCapabilities({
         await updateSkill(agent.id, editingSkill, {
           description: values.description,
           content: values.content,
+          channel_scope: values.channel_scope,
         });
       } else {
         await createSkill(agent.id, {
           ...values,
           enabled: true,
-          channel_scope: ["console"],
+          channel_scope: values.channel_scope,
         });
       }
       setSkillEditorOpen(false);
@@ -193,6 +204,9 @@ export default function AgentCapabilities({
                                     {skill.enabled ? "已注入 Prompt" : "已停用"}
                                   </Tag>
                                   <Tag>v{skill.version}</Tag>
+                                  {skill.channel_scope.map((channel) => (
+                                    <Tag key={channel} color="blue">{channel}</Tag>
+                                  ))}
                                 </Space>
                                 <Switch
                                   checked={skill.enabled}
@@ -286,6 +300,18 @@ export default function AgentCapabilities({
               className="workspace-editor"
               autoSize={{ minRows: 14, maxRows: 24 }}
               placeholder="# 工作流程\n\n1. ...\n2. ..."
+            />
+          </Form.Item>
+          <Form.Item
+            name="channel_scope"
+            label="在哪些 Channel 注入"
+            rules={[{ required: true, type: "array", min: 1 }]}
+          >
+            <Checkbox.Group
+              options={[
+                { label: "控制台", value: "console" },
+                { label: "企业微信", value: "wecom" },
+              ]}
             />
           </Form.Item>
         </Form>

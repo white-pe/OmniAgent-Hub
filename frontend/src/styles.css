@@ -41,6 +41,29 @@ body {
   gap: 22px;
 }
 
+.channel-layout {
+  display: grid;
+  gap: 22px;
+}
+
+.channel-form-card .ant-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+}
+
+.channel-form-card .ant-form-item:nth-last-child(-n + 4) {
+  grid-column: 1 / -1;
+}
+
+.channel-card {
+  height: 100%;
+}
+
+.callback-url {
+  word-break: break-all;
+}
+
 .team-form-card .ant-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
