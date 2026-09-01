@@ -186,7 +186,7 @@ export default function BlueprintCreator({
             <Alert
               type="info"
               showIcon
-              message="生成与应用已经分离"
+              title="生成与应用已经分离"
               description={`草案 ${draft.draft_id} 由 ${draft.source_provider_name} / ${draft.source_model_name} 生成。关闭此窗口会取消草案，不产生 Agent。`}
             />
             {draft.warnings.map((warning) => (
@@ -195,7 +195,7 @@ export default function BlueprintCreator({
                 className="blueprint-warning"
                 type="warning"
                 showIcon
-                message={warning}
+                title={warning}
               />
             ))}
           </>
@@ -243,7 +243,7 @@ export default function BlueprintCreator({
               className="blueprint-warning"
               type="error"
               showIcon
-              message="只有协调 Agent 才能请求 delegate_to_agent，请勾选协调角色或移除该 Tool。"
+              title="只有协调 Agent 才能请求 delegate_to_agent，请勾选协调角色或移除该 Tool。"
             />
           )}
           <Form.Item name="requested_skills" label="Skill 请求">

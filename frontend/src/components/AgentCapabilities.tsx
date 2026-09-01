@@ -171,7 +171,7 @@ export default function AgentCapabilities({
         <Alert
           type="info"
           showIcon
-          message="Skill 决定怎么做；Tool 决定能做什么。"
+          title="Skill 决定怎么做；Tool 决定能做什么。"
           description="两者都按 Agent 隔离。新 Tool 默认关闭，运行时还会再次校验权限、参数、路径、超时和结果大小。"
         />
         {loading ? (

@@ -299,7 +299,7 @@ export default function ChannelsPage() {
       <Alert
         type="info"
         showIcon
-        message="推荐：扫码创建企业微信智能机器人"
+        title="推荐：扫码创建企业微信智能机器人"
         description="扫码后由后端取得 Bot ID 与 Secret 并建立 WebSocket 长连接；浏览器不会看到 Secret，也不需要公网 HTTPS 回调地址。"
       />
       <Card title="智能机器人接入流程">
@@ -330,7 +330,7 @@ export default function ChannelsPage() {
                   <Alert
                     type="warning"
                     showIcon
-                    message="扫码时若企业微信询问是否授权额外能力，先选择“暂不授权”，避免机器人仅创建者可用。"
+                    title="扫码时若企业微信询问是否授权额外能力，先选择“暂不授权”，避免机器人仅创建者可用。"
                   />
                   <Button type="primary" htmlType="submit" loading={saving}>
                     扫码授权并创建

@@ -127,14 +127,14 @@ export default function TeamsPage() {
       <Alert
         type="info"
         showIcon
-        message="Team 是委派白名单，不是共享权限容器。"
+        title="Team 是委派白名单，不是共享权限容器。"
         description="成员子 Run 使用自己的模型、Workspace、Skills 和 Tools；协调 Agent 只能收到成员最终结果。"
       />
       {!coordinators.length && (
         <Alert
           type="warning"
           showIcon
-          message="请先把至少一个 Agent 标记为协调 Agent。"
+          title="请先把至少一个 Agent 标记为协调 Agent。"
         />
       )}
 

@@ -198,7 +198,7 @@ export default function AgentsPage() {
         <Alert
           type="warning"
           showIcon
-          message="创建 Agent 前，需要至少一个已启用的 Provider 和 Model。"
+          title="创建 Agent 前，需要至少一个已启用的 Provider 和 Model。"
         />
       )}
 

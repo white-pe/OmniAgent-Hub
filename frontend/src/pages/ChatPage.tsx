@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Button,
   Card,
   Empty,
-  List,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -13,6 +13,9 @@ import {
   message,
 } from "antd";
 import { Input } from "antd";
+import { Plus, RefreshCw, Search, Send, Square } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { listAgents, type Agent } from "../api/agents";
 import {
@@ -29,7 +32,7 @@ import {
   type ToolCallStatus,
 } from "../api/chats";
 
-const { Paragraph, Text, Title } = Typography;
+const { Text, Title } = Typography;
 const { TextArea } = Input;
 const ACTIVE_STATUSES: RunStatus[] = ["queued", "running", "cancelling"];
 const ALL_AGENTS = "__all_agents__";
@@ -55,6 +58,7 @@ export default function ChatPage() {
   const [chatId, setChatId] = useState<string>();
   const [detail, setDetail] = useState<ChatDetail>();
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [creating, setCreating] = useState(false);
   const [input, setInput] = useState("");
@@ -63,9 +67,26 @@ export default function ChatPage() {
   const [liveToolEvents, setLiveToolEvents] = useState<LiveToolEvent[]>([]);
   const [liveDelegations, setLiveDelegations] = useState<LiveDelegationEvent[]>([]);
   const [streamState, setStreamState] = useState("未连接");
+  const [query, setQuery] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "console" | "wecom">("all");
   const eventSourceRef = useRef<EventSource | null>(null);
+  const messageEndRef = useRef<HTMLDivElement | null>(null);
   const chatsRef = useRef<ChatSession[]>([]);
   const chatIdRef = useRef<string | undefined>(undefined);
+  const visibleChats = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase();
+    return chats.filter((chat) => {
+      const sourceMatches =
+        sourceFilter === "all" ||
+        (sourceFilter === "console" && chat.channel === "console") ||
+        (sourceFilter === "wecom" && chat.channel !== "console");
+      if (!sourceMatches) return false;
+      if (!normalized) return true;
+      return [chat.title, chat.agent_name, chat.channel_name, chat.external_user_id]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase().includes(normalized));
+    });
+  }, [chats, query, sourceFilter]);
 
   useEffect(() => {
     const loadAgents = async () => {
@@ -91,6 +112,10 @@ export default function ChatPage() {
   useEffect(() => {
     chatIdRef.current = chatId;
   }, [chatId]);
+
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [detail?.messages.length, liveOutput, liveToolEvents.length, liveDelegations.length]);
 
   useEffect(() => {
     eventSourceRef.current?.close();
@@ -173,6 +198,7 @@ export default function ChatPage() {
   };
 
   const loadDetail = async (selectedChatId: string, reconnect = false) => {
+    setDetailLoading(true);
     try {
       const nextDetail = await getChat(selectedChatId);
       setDetail(nextDetail);
@@ -191,6 +217,8 @@ export default function ChatPage() {
       }
     } catch (reason) {
       void message.error(errorText(reason));
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -367,7 +395,7 @@ export default function ChatPage() {
       <Alert
         type="warning"
         showIcon
-        message="没有可用 Agent"
+        title="没有可用 Agent"
         description="请先在 Blueprint 与 Agent 页面创建并启用一个 Agent。"
       />
     );
@@ -375,8 +403,7 @@ export default function ChatPage() {
 
   return (
     <div className="chat-console">
-      <Card className="chat-sidebar" title="统一会话">
-        <Text type="secondary">会话范围</Text>
+      <Card className="chat-sidebar" title={<span>统一会话 <Text type="secondary">{chats.length}</Text></span>}>
         <Select
           className="full-width chat-agent-select"
           value={agentId}
@@ -387,47 +414,74 @@ export default function ChatPage() {
           ]}
           onChange={setAgentId}
         />
-        <Space.Compact block>
+        <div className="chat-sidebar-actions">
           <Button
-            className="full-width"
             type="primary"
+            icon={<Plus size={16} />}
             loading={creating}
             disabled={agentId === ALL_AGENTS}
             onClick={() => void addChat()}
           >
-            新建网页会话
+            新建会话
           </Button>
-          <Button onClick={() => void refreshChats()}>刷新</Button>
-        </Space.Compact>
-        <List
-          className="chat-session-list"
-          loading={loading}
-          locale={{ emptyText: "这个 Agent 还没有会话" }}
-          dataSource={chats}
-          renderItem={(chat) => (
-            <List.Item
-              className={chat.id === chatId ? "chat-session active" : "chat-session"}
-              onClick={() => setChatId(chat.id)}
-            >
-              <div>
-                <Space size={6} wrap>
-                  <Text strong={chat.id === chatId}>{chat.title}</Text>
-                  <ChannelTag channel={chat.channel} />
-                </Space>
-                <Text type="secondary">
-                  {chat.agent_name} · {chat.channel_name ?? "网页控制台"} · {formatTime(chat.updated_at)}
-                </Text>
-              </div>
-            </List.Item>
-          )}
+          <Button
+            aria-label="刷新会话"
+            icon={<RefreshCw size={16} />}
+            loading={loading}
+            onClick={() => void refreshChats()}
+          />
+        </div>
+        <Input
+          allowClear
+          prefix={<Search size={15} />}
+          placeholder="搜索标题、Agent 或外部用户"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
         />
+        <Segmented
+          block
+          value={sourceFilter}
+          options={[
+            { value: "all", label: "全部" },
+            { value: "console", label: "网页" },
+            { value: "wecom", label: "企业微信" },
+          ]}
+          onChange={(value) => setSourceFilter(value as typeof sourceFilter)}
+        />
+        <div className="chat-session-list">
+          {loading ? (
+            <div className="sidebar-loading"><Spin size="small" /></div>
+          ) : !visibleChats.length ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={query ? "没有匹配的会话" : "还没有会话"} />
+          ) : (
+            visibleChats.map((chat) => (
+              <button
+                type="button"
+                key={chat.id}
+                className={chat.id === chatId ? "chat-session active" : "chat-session"}
+                onClick={() => setChatId(chat.id)}
+              >
+                <div className="chat-session-title">
+                  <Text strong={chat.id === chatId} ellipsis={{ tooltip: chat.title }}>{chat.title}</Text>
+                  <ChannelTag channel={chat.channel} />
+                </div>
+                <Text type="secondary" ellipsis>
+                  {chat.agent_name} · {chat.channel_name ?? "网页控制台"}
+                </Text>
+                <Text type="secondary" className="chat-session-time">{formatTime(chat.updated_at)}</Text>
+              </button>
+            ))
+          )}
+        </div>
       </Card>
 
       <Card className="chat-main">
         {!chatId ? (
           <Empty description="新建或选择一个会话后开始交流" />
-        ) : !detail ? (
+        ) : detailLoading && !detail ? (
           <Spin />
+        ) : !detail ? (
+          <Empty description="会话加载失败，请重新选择" />
         ) : (
           <>
             <header className="chat-header">
@@ -459,7 +513,9 @@ export default function ChatPage() {
                       </Text>
                       {item.status === "partial" && <Tag color="orange">部分回答</Tag>}
                     </Space>
-                    <Paragraph>{item.content}</Paragraph>
+                    <div className="markdown-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.content}</ReactMarkdown>
+                    </div>
                   </article>
                 ))
               )}
@@ -469,7 +525,11 @@ export default function ChatPage() {
                     <Text strong>{detail.session.agent_name}</Text>
                     <Tag color="processing">生成中</Tag>
                   </Space>
-                  <Paragraph>{liveOutput || "正在读取人格与会话历史……"}</Paragraph>
+                  <div className="markdown-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {liveOutput || "正在读取人格与会话历史……"}
+                    </ReactMarkdown>
+                  </div>
                 </article>
               )}
               {!!liveToolEvents.length && (
@@ -496,6 +556,7 @@ export default function ChatPage() {
                   ))}
                 </div>
               )}
+              <div ref={messageEndRef} />
             </div>
 
             {detail.session.channel === "console" ? (
@@ -522,12 +583,13 @@ export default function ChatPage() {
                   </Text>
                   <Space>
                     {activeRun && (
-                      <Button danger onClick={() => void stop()}>
+                      <Button danger icon={<Square size={14} />} onClick={() => void stop()}>
                         停止生成
                       </Button>
                     )}
                     <Button
                       type="primary"
+                      icon={<Send size={15} />}
                       loading={sending}
                       disabled={!input.trim() || Boolean(activeRun)}
                       onClick={() => void send()}
@@ -541,7 +603,7 @@ export default function ChatPage() {
               <Alert
                 type="info"
                 showIcon
-                message="这是外部 Channel 会话的只读镜像"
+                title="这是外部 Channel 会话的只读镜像"
                 description={`这里展示完整历史与运行审计。请从${detail.session.channel_name ?? "企业微信"}继续发送消息，网页不会伪造外部用户输入。`}
                 action={
                   activeRun ? (

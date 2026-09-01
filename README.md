@@ -1,6 +1,6 @@
 # PawTeam Lite
 
-PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前已完成 **1.0：生产安全与单机上线闭环**。
+PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前已完成 **阶段 9：产品化工作台与面试表达层**，项目重点转向本地完善、完整复盘与面试演示。
 
 ## 当前能力
 
@@ -15,6 +15,7 @@ PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前已完
 - 阶段 7.1：企业微信智能机器人扫码授权、WebSocket 长连接、断线重连与无公网回调接入；
 - 阶段 7.2：网页与企业微信统一会话列表、来源元数据、自动刷新和外部会话只读审计；
 - 阶段 8：单管理员登录、CSRF、生产配置校验、Caddy HTTPS、健康检查、备份恢复与 CI；
+- 阶段 9：产品化工作台、系统总览、统一会话检索、页面级代码分割和安全 Markdown 渲染；
 - `AGENTS.md / SOUL.md / PROFILE.md / MEMORY.md` 可视化编辑；
 - Agent 启停、协调 Agent 标记和配置版本控制；
 - 数据库与文件操作的补偿事务；
@@ -139,4 +140,6 @@ make prod-up
 - [阶段 7.1：企业微信智能机器人扫码与长连接](docs/stage-7.1-wecom-bot-qr.zh.md)
 - [阶段 7.2：跨 Channel 统一会话控制台](docs/stage-7.2-unified-channel-chat.zh.md)
 - [阶段 8：生产安全与单机上线](docs/stage-8-production-deployment.zh.md)
+- [阶段 9：产品化工作台与面试表达层](docs/stage-9-product-console.zh.md)
+- [完整学习与面试复盘路线](docs/project-learning-roadmap.zh.md)
 - [Git 阶段复盘](docs/git-stage-workflow.zh.md)
