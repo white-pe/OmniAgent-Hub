@@ -599,3 +599,58 @@ class ChannelMessage(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class KnowledgeBase(Base):
+    """Managed knowledge collection; Agent access uses explicit bindings."""
+    __tablename__ = "knowledge_bases"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    name: Mapped[str] = mapped_column(
+        String(100), unique=True, nullable=False
+    )
+    description: Mapped[str] = mapped_column(
+        Text, nullable=False, default=""
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+class AgentKnowledgeBinding(Base):
+    """Explicit permission for one Agent to access one knowledge base."""
+
+    __tablename__ = "agent_knowledge_bindings"
+
+    agent_id: Mapped[str] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
