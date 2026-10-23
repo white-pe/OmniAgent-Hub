@@ -4,7 +4,7 @@
 
 阶段 7 的企业微信“自建应用回调”是标准、稳定的接入方式，但第一次配置需要理解 CorpID、AgentId、应用 Secret、回调 Token、EncodingAESKey、公网 HTTPS 和回调 URL。它适合学习签名、加密回调与主动消息 API，却不适合做低门槛的演示入口。
 
-阶段 7.1 参考 QwenPaw 的交互，新增企业微信“智能机器人 API 模式”：管理员扫码确认后，PawTeam Lite 获得 Bot ID 与 Secret，通过 `WecomTeam` 提供的 Python SDK 建立 WebSocket 长连接。这个模式不要求公网域名、不要求配置 HTTP 回调，也不需要用户理解五项应用参数。
+阶段 7.1 参考 QwenPaw 的交互，新增企业微信“智能机器人 API 模式”：管理员扫码确认后，OmniAgent 获得 Bot ID 与 Secret，通过 `WecomTeam` 提供的 Python SDK 建立 WebSocket 长连接。这个模式不要求公网域名、不要求配置 HTTP 回调，也不需要用户理解五项应用参数。
 
 本阶段保留两套 Adapter：
 
@@ -22,26 +22,26 @@
 ```text
 企业微信服务器
   → 公网 HTTPS POST 加密 XML
-  → PawTeam Lite 验签、解密、创建 Run
-  → PawTeam Lite 用 CorpID + Secret 换 access_token
+  → OmniAgent 验签、解密、创建 Run
+  → OmniAgent 用 CorpID + Secret 换 access_token
   → 调 message/send 主动回复成员
 ```
 
-它对应数据库中的 `Channel.kind = wecom`。企业微信是 HTTP 客户端，PawTeam Lite 必须能被公网访问。
+它对应数据库中的 `Channel.kind = wecom`。企业微信是 HTTP 客户端，OmniAgent 必须能被公网访问。
 
 ### 2.2 智能机器人 API 模式
 
 这是阶段 7.1 新增的模式：
 
 ```text
-PawTeam Lite
+OmniAgent
   → 带 Bot ID + Secret 主动连接 wss://openws.work.weixin.qq.com
   → 在同一条 WebSocket 上接收企业微信消息
   → 创建内部 Chat 与 AgentRun
   → 在同一条 WebSocket 上主动发送 Markdown 回复
 ```
 
-它对应 `Channel.kind = wecom_bot`。连接由 PawTeam Lite 主动发起，因此企业微信不需要访问你的电脑，也不需要公网 HTTPS。
+它对应 `Channel.kind = wecom_bot`。连接由 OmniAgent 主动发起，因此企业微信不需要访问你的电脑，也不需要公网 HTTPS。
 
 “扫码授权”只负责取得连接凭据；真正长期收发消息的是 WebSocket。不要把二维码误认为消息通道。
 
@@ -100,7 +100,7 @@ POST /api/channels/wecom-bot/qrcode
 }
 ```
 
-浏览器只拿到二维码图片和 PawTeam Lite 自己生成的会话 ID。
+浏览器只拿到二维码图片和 OmniAgent 自己生成的会话 ID。
 
 ### 4.2 后端取得企业微信授权页
 
@@ -146,7 +146,7 @@ POST /api/channels/wecom-bot
 
 路由调用 `consume(auth_session_id)` 取出凭据并立刻删除扫码会话。同一个授权结果不能再次创建 Channel。
 
-这和 QwenPaw 截图中的“自动填入 Bot ID 与 Secret”有一个安全差异：PawTeam Lite 不把 Secret 返回浏览器或放入表单状态。使用体验仍是扫码后自动创建，但 Secret 的暴露面更小。
+这和 QwenPaw 截图中的“自动填入 Bot ID 与 Secret”有一个安全差异：OmniAgent 不把 Secret 返回浏览器或放入表单状态。使用体验仍是扫码后自动创建，但 Secret 的暴露面更小。
 
 ## 5. 凭据到底存在哪里
 

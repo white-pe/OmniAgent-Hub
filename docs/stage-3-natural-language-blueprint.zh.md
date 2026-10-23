@@ -729,7 +729,7 @@ PyCharm 中的操作由你手工完成。
 在 PyCharm Terminal 中确认目录是：
 
 ```text
-/Users/whitexp/code/AgentProject/QwenPaw/pawteam-lite
+/Users/whitexp/code/AgentProject/OmniAgent-Hub
 ```
 
 执行：
@@ -761,7 +761,7 @@ cd ..
 浏览器应显示：
 
 ```text
-PAWTEAM LITE · STAGE 3
+OmniAgent · STAGE 3
 ```
 
 ### 第三步：生成草案

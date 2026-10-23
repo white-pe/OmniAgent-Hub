@@ -21,7 +21,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "PawTeam Lite"
+    app_name: str = "OmniAgent"
     version: str = "1.0.0"
     environment: str = "development"
     host: str = "127.0.0.1"

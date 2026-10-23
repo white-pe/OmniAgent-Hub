@@ -363,7 +363,7 @@ uv run alembic current
 
 ### 第二步：重启进程
 
-停止旧的 `Backend API` 和 `Frontend Dev`，再由你依次重新运行它们。浏览器应显示 `PAWTEAM LITE · STAGE 2`。
+停止旧的 `Backend API` 和 `Frontend Dev`，再由你依次重新运行它们。浏览器应显示 `OmniAgent · STAGE 2`。
 
 ### 第三步：创建两个 Agent
 

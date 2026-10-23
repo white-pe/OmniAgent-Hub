@@ -15,6 +15,5 @@ frontend/node_modules/
 backups/
 frontend/*.tsbuildinfo
 
-# The parent QwenPaw repository ignores every uv.lock. PawTeam Lite keeps
-# its own lock file so a fresh checkout resolves the same Python packages.
+# Keep the lock file so a fresh checkout resolves the same Python packages.
 !uv.lock

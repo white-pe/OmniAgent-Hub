@@ -1,6 +1,10 @@
-# PawTeam Lite
+# OmniAgent
 
-PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前已完成 **阶段 9：产品化工作台与面试表达层**，项目重点转向本地完善、完整复盘与面试演示。
+OmniAgent 是一个教学型、本地优先的多 Agent 平台。当前已完成 **阶段 9：产品化工作台与面试表达层**，项目重点转向本地完善、完整复盘与面试演示。
+
+项目工作目录为 `/Users/whitexp/code/AgentProject/OmniAgent-Hub`，后续开发、运行和验证均在此目录执行。
+
+为兼容已有配置和数据，后端 Python 模块名 `pawteam_api`、环境变量前缀 `PAWTEAM_`、Cookie、浏览器存储键和 Docker 数据卷名称保持兼容。
 
 ## 当前能力
 
@@ -34,6 +38,7 @@ PawTeam Lite 是一个教学型、本地优先的多 Agent 平台。当前已完
 要求：Python 3.11～3.14、uv、Node.js 22+。
 
 ```bash
+cd /Users/whitexp/code/AgentProject/OmniAgent-Hub
 cp .env.example .env
 make setup
 make migrate

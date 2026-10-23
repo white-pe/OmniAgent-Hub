@@ -28,7 +28,7 @@ React 流式测试
   → 组合 Base URL + 解密后的 API Key + Model
   → OpenAICompatibleClient
   → 上游 POST {base_url}/chat/completions
-  → PawTeam SSE: start → delta... → done/error
+  → OmniAgent SSE: start → delta... → done/error
 ```
 
 Router 不直接操作数据库，也不直接拼上游 HTTP 请求。ProviderService 负责业务编排，OpenAICompatibleClient 只负责协议转换，SecretStore 只负责密钥。
@@ -137,7 +137,7 @@ data: {"model":"qwen-plus"}
 
 ### 第一步：同步依赖和迁移
 
-打开 PyCharm Terminal，在 `pawteam-lite` 根目录执行：
+打开 PyCharm Terminal，在 `OmniAgent-Hub` 根目录执行：
 
 ```bash
 uv sync
@@ -375,7 +375,7 @@ events()
 → 跳过空行和非 data 行
 → 遇到 [DONE] 结束
 → 从 choices[0].delta.content 提取文本
-→ 每个文本块转换成 PawTeam delta
+→ 每个文本块转换成 OmniAgent delta
 → done
 ```
 
@@ -401,7 +401,7 @@ events()
 Model "gp-5.6-terra" is not supported by any configured account in this group
 ```
 
-说明请求已经到达上游模型网关，但 `model` 技术标识无法映射到当前账号。它不是 PawTeam Router 的 404，也通常不是 API Key 格式问题。页面中的模型名称会被原样发送，必须填写 Provider 控制台真正支持的模型 ID。
+说明请求已经到达上游模型网关，但 `model` 技术标识无法映射到当前账号。它不是 OmniAgent Router 的 404，也通常不是 API Key 格式问题。页面中的模型名称会被原样发送，必须填写 Provider 控制台真正支持的模型 ID。
 
 ## 19. 自动测试怎样隔离真实模型
 
@@ -467,7 +467,7 @@ provider_id + model_id
 POST prompt
 → 上游 SSE
 → Client 提取 delta.content
-→ PawTeam SSE
+→ OmniAgent SSE
 → 浏览器 ReadableStream buffer
 → React 逐块追加文本
 ```

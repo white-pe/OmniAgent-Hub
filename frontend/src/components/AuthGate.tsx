@@ -57,7 +57,7 @@ export default function AuthGate({ children }: Props) {
   return (
     <main className="auth-shell">
       <Card className="auth-card">
-        <Text className="eyebrow">PAWTEAM LITE · PRIVATE CONSOLE</Text>
+        <Text className="eyebrow">OmniAgent · PRIVATE CONSOLE</Text>
         <Title level={2}>管理员登录</Title>
         <Paragraph type="secondary">
           Provider 密钥、Agent 工作区和企业微信凭证都属于私有数据，请使用部署时设置的管理员密码。

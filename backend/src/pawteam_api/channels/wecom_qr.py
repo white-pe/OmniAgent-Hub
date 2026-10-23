@@ -18,7 +18,7 @@ import segno
 from pawteam_api.config import Settings
 
 _AUTH_ORIGIN = "https://work.weixin.qq.com"
-_SOURCE = "pawteam-lite"
+_SOURCE = "omniagent"
 
 
 class WeComQrError(RuntimeError):

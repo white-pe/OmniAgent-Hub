@@ -86,7 +86,7 @@ Session Cookie 使用：
 
 ## 4. CSRF 为什么和登录不是一回事
 
-Cookie 会被浏览器自动携带。只有登录判断时，恶意网站可能诱导已登录浏览器向 PawTeam 发送写请求，这就是 CSRF 风险。
+Cookie 会被浏览器自动携带。只有登录判断时，恶意网站可能诱导已登录浏览器向 OmniAgent 发送写请求，这就是 CSRF 风险。
 
 因此所有 `POST / PUT / PATCH / DELETE` 需要同时满足：
 

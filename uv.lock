@@ -898,7 +898,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pawteam-lite"
+name = "omniagent"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

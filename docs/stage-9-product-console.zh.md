@@ -4,7 +4,7 @@
 
 ## 1. 这一阶段解决什么问题
 
-阶段 0～8 已经让 PawTeam Lite 具备完整的后端能力，但“功能存在”不等于“产品可讲”。阶段 9 不增加新的 Agent 核心协议，而是把已有能力组织成一套容易操作、容易观察、也容易在面试中解释的产品工作台。
+阶段 0～8 已经让 OmniAgent 具备完整的后端能力，但“功能存在”不等于“产品可讲”。阶段 9 不增加新的 Agent 核心协议，而是把已有能力组织成一套容易操作、容易观察、也容易在面试中解释的产品工作台。
 
 这一阶段完成四件事：
 
@@ -529,7 +529,7 @@ SSE 可能断线、刷新或丢失客户端状态。它只负责实时体验；�
 
 可使用下面这版：
 
-> 独立设计并实现本地优先的多 Agent 工作台 PawTeam Lite，支持自然语言生成 Agent Blueprint、Provider 与加密密钥管理、独立 Workspace/Skill/Tool 权限、Team 受控委派、网页与企业微信统一会话、SSE 流式执行及 Run/ToolCall/Delegation 全链路审计；使用 FastAPI、SQLAlchemy、React、TypeScript 和 SQLite，并通过页面级代码分割与安全 Markdown 渲染完善产品化控制台。
+> 独立设计并实现本地优先的多 Agent 工作台 OmniAgent，支持自然语言生成 Agent Blueprint、Provider 与加密密钥管理、独立 Workspace/Skill/Tool 权限、Team 受控委派、网页与企业微信统一会话、SSE 流式执行及 Run/ToolCall/Delegation 全链路审计；使用 FastAPI、SQLAlchemy、React、TypeScript 和 SQLite，并通过页面级代码分割与安全 Markdown 渲染完善产品化控制台。
 
 如果面试官继续追问，你必须能展开三条主线：
 

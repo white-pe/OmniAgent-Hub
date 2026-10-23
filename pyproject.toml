@@ -1,5 +1,5 @@
 [project]
-name = "pawteam-lite"
+name = "omniagent"
 version = "1.0.0"
 description = "A small, explainable multi-agent platform built step by step."
 readme = "README.md"

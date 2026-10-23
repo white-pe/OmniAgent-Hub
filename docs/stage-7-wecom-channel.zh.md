@@ -2,7 +2,7 @@
 
 ## 1. 本阶段完成了什么
 
-阶段 7 第一次让 PawTeam Lite 离开自己的 Web 控制台。企业微信成员可以给自建应用发送文本消息，系统把消息交给指定 Agent；如果这个 Agent 是某个启用 Team 的协调者，它仍然可以调用阶段 6 的 `delegate_to_agent`，最后由企业微信应用主动回复成员。
+阶段 7 第一次让 OmniAgent 离开自己的 Web 控制台。企业微信成员可以给自建应用发送文本消息，系统把消息交给指定 Agent；如果这个 Agent 是某个启用 Team 的协调者，它仍然可以调用阶段 6 的 `delegate_to_agent`，最后由企业微信应用主动回复成员。
 
 本阶段不是把企业微信代码直接塞进 Agent Runtime，而是建立了两层：
 
@@ -66,8 +66,8 @@ CorpID 和 AgentId 是定位企业与应用的标识，不按密钥处理，保�
 一条正常企业微信问答会产生两条 ChannelMessage：
 
 ```text
-inbound  企业微信成员 → PawTeam    status: processing → completed
-outbound PawTeam → 企业微信成员    status: pending → delivering → delivered
+inbound  企业微信成员 → OmniAgent    status: processing → completed
+outbound OmniAgent → 企业微信成员    status: pending → delivering → delivered
 ```
 
 ### 2.5 WeComCrypto
@@ -296,7 +296,7 @@ https://你的公网域名 + /api/channel-webhooks/wecom/{channel_id}
 
 ### 11.1 更新依赖与数据库
 
-打开 PyCharm 的 Terminal，确认项目目录为 `pawteam-lite`，执行：
+打开 PyCharm 的 Terminal，确认项目目录为 `OmniAgent-Hub`，执行：
 
 ```bash
 uv sync
@@ -342,7 +342,7 @@ uv run alembic current
 2. 将需要测试的成员加入应用可见范围；
 3. 记录企业 CorpID、应用 AgentId 和应用 Secret；
 4. 在“接收消息”配置中取得或设置 Token、EncodingAESKey；
-5. 在 PawTeam Lite 创建 Channel，并绑定目标 Agent；
+5. 在 OmniAgent 创建 Channel，并绑定目标 Agent；
 6. 将本机后端暴露为公网 HTTPS；
 7. 用“公网 HTTPS 基址 + 页面显示的 callback_path”组成完整 URL；
 8. 把完整 URL、同一 Token、同一 EncodingAESKey 填到企业微信后台并保存；
@@ -406,7 +406,7 @@ uv run alembic current
 - 没有 OAuth 登录、通讯录同步或外部联系人客服接口；
 - outbox worker 运行在当前 FastAPI 进程，不是独立的 Celery/RQ 服务；
 - 同一会话并发消息采用“忙碌拒绝并提示重发”，没有 FIFO 排队；
-- 本地开发的公网 HTTPS 隧道不由 PawTeam Lite 管理。
+- 本地开发的公网 HTTPS 隧道不由 OmniAgent 管理。
 
 这些不是遗漏，而是小型简历项目的主动边界。它保留了真实协议、持久化、幂等、重试、审计和扩展点，同时避免一次引入消息队列、分布式锁和所有媒体类型。
 

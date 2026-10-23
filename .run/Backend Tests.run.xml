@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Backend Tests" type="tests" factoryName="py.test">
-    <module name="pawteam-lite" />
+    <module name="OmniAgent-Hub" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <option name="SDK_HOME" value="$PROJECT_DIR$/.venv/bin/python" />

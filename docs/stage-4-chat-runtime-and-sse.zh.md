@@ -929,7 +929,7 @@ run.completed
 在 PyCharm Terminal：
 
 ```bash
-cd /Users/whitexp/code/AgentProject/QwenPaw/pawteam-lite
+cd /Users/whitexp/code/AgentProject/OmniAgent-Hub
 uv sync
 uv run alembic upgrade head
 uv run alembic current
@@ -961,7 +961,7 @@ Frontend Dev
 再依次重新运行。页面顶部应显示：
 
 ```text
-PAWTEAM LITE · STAGE 4
+OmniAgent · STAGE 4
 ```
 
 ### 第三步：验证人格隔离

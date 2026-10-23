@@ -141,7 +141,7 @@ def _archive_path(output: Path, prefix: str) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="PawTeam backup utility")
+    parser = argparse.ArgumentParser(description="OmniAgent backup utility")
     subparsers = parser.add_subparsers(dest="command", required=True)
     create = subparsers.add_parser("create")
     create.add_argument("--output", type=Path, required=True)

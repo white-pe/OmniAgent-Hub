@@ -25,7 +25,7 @@ PyCharm 只是启动、编辑和调试工具，不属于运行时架构。关闭
 ## 3. 工程目录
 
 ```text
-pawteam-lite/
+OmniAgent-Hub/
 ├── backend/
 │   ├── src/pawteam_api/
 │   │   ├── main.py          # FastAPI 应用工厂和生命周期

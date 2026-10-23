@@ -138,10 +138,10 @@ export default function App() {
           theme="light"
         >
           <div className="brand-block">
-            <div className="brand-mark">P</div>
+            <div className="brand-mark">O</div>
             {!collapsed && (
               <div>
-                <Text strong className="brand-name">PawTeam Lite</Text>
+                <Text strong className="brand-name">OmniAgent</Text>
                 <Text type="secondary" className="brand-version">v1.0</Text>
               </div>
             )}

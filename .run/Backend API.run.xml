@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Backend API" type="PythonConfigurationType" factoryName="Python">
-    <module name="pawteam-lite" />
+    <module name="OmniAgent-Hub" />
     <option name="SDK_HOME" value="$PROJECT_DIR$/.venv/bin/python" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <option name="IS_MODULE_SDK" value="false" />
