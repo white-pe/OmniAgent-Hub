@@ -14,7 +14,10 @@ from pawteam_api.api.routes.skills import router as skills_router
 from pawteam_api.api.routes.teams import router as teams_router
 from pawteam_api.api.routes.tools import router as tools_router
 from pawteam_api.api.routes.wecom_webhooks import router as wecom_webhooks_router
-from pawteam_api.api.routes.knowledge import router as knowledge_router
+from pawteam_api.api.routes.knowledge import (
+    agent_binding_router,
+    router as knowledge_router,
+)
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router)
@@ -30,3 +33,4 @@ api_router.include_router(tools_router)
 api_router.include_router(teams_router)
 api_router.include_router(wecom_webhooks_router)
 api_router.include_router(knowledge_router)
+api_router.include_router(agent_binding_router)

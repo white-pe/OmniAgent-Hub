@@ -55,3 +55,60 @@ class KnowledgeBaseResponse(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class KnowledgeBaseBindingCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    knowledge_base_id: str = Field(min_length=1, max_length=36)
+
+
+class KnowledgeBaseBindingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+
+
+class KnowledgeBaseBindingResponse(BaseModel):
+    agent_id: str
+    knowledge_base_id: str
+    knowledge_base_name: str
+    enabled: bool
+    created_at: datetime
+
+
+class KnowledgeDocumentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=200)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Document title cannot be empty")
+        return value
+
+
+class KnowledgeDocumentResponse(BaseModel):
+    id: str
+    knowledge_base_id: str
+    title: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class KnowledgeDocumentVersionResponse(BaseModel):
+    id: str
+    document_id: str
+    version_number: int
+    original_filename: str
+    media_type: str | None
+    size_bytes: int
+    sha256: str
+    status: str
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime

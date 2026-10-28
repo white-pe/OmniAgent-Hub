@@ -66,6 +66,12 @@ class Settings(BaseSettings):
         ]
     )
 
+    knowledge_max_upload_bytes: int = Field(
+        default=20 * 1024 * 1024,
+        ge=1,
+        le=1024 * 1024 * 1024,
+    )
+
     def ensure_directories(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.secrets_dir.mkdir(parents=True, exist_ok=True)
