@@ -21,6 +21,7 @@ from pawteam_api.security.middleware import ConsoleSecurityMiddleware
 from pawteam_api.security.secret_store import SecretStore
 from pawteam_api.tools.registry import ToolRegistry
 from pawteam_api.workspaces.store import WorkspaceStore
+from pawteam_api.knowledge.storage import LocalKnowledgeFileStore
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -32,6 +33,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         resolved_settings.ensure_directories()
         app.state.settings = resolved_settings
+        # 每个应用实例复用同一个存储组件。
+        # 存储组件保存目录和大小配置，不保存请求专属的文件流或数据库会话。
+        app.state.knowledge_file_store = LocalKnowledgeFileStore(
+            resolved_settings
+        )
         app.state.auth_manager = auth_manager
         app.state.db_engine = create_database_engine(resolved_settings)
         app.state.session_factory = create_session_factory(app.state.db_engine)

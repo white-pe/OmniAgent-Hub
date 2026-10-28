@@ -16,6 +16,8 @@ dependencies = [
     "uvicorn[standard]>=0.35,<1",
     "wecom-aibot-python-sdk==1.0.2",
     "python-socks[asyncio]>=2.7,<3",
+    "python-multipart>=0.0.32",
+    "anyio>=4,<5",
 ]
 
 [dependency-groups]

@@ -55,7 +55,9 @@ class LocalKnowledgeFileStore:
         version_id = self._canonical_uuid(version_id)
 
         relative_key = f"documents/{document_id}/{version_id}.bin"
-        destination = self.root / relative_key
+
+        # 所有实际写入路径都通过统一方法生成，确保路径边界规则一致。
+        destination = self._path_for_key(relative_key)
         parent = destination.parent
         parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(parent, 0o700)
@@ -120,3 +122,44 @@ class LocalKnowledgeFileStore:
             raise InvalidKnowledgeFileIdentityError(
                 "Document and version IDs must be UUIDs"
             ) from error
+
+
+    def delete(self, storage_key: str) -> None:
+        """删除一个已经保存的知识库源文件。
+
+        该方法只接受存储系统自己生成的相对 key，不接受绝对路径。
+        这样可以避免调用方通过 storage_key 删除存储根目录之外的文件。
+        """
+
+        path = self._path_for_key(storage_key)
+
+        # missing_ok=True 让清理动作具备幂等性：
+        # 文件已经被删除时，不需要再次抛出异常。
+        path.unlink(missing_ok=True)
+
+    def _path_for_key(self, storage_key: str) -> Path:
+        """把内部 storage key 安全转换为绝对路径。"""
+
+        relative_path = Path(storage_key)
+
+        # storage_key 理论上由 save() 生成，但这里仍然必须再次校验。
+        # 不能因为当前调用方是内部 Service，就跳过边界检查。
+        if (
+            not storage_key
+            or relative_path.is_absolute()
+            or any(
+                part in {"", ".", ".."}
+                for part in relative_path.parts
+            )
+        ):
+            raise ValueError("Invalid knowledge file storage key")
+
+        # 删除接口只允许操作 documents 目录。
+        # 即使未来 storage 根目录下增加其他类型文件，也不会被误删。
+        if relative_path.parts[0] != "documents":
+            raise ValueError("Storage key must point to a document file")
+
+        path = (self.root / relative_path).resolve()
+        self._assert_inside_root(path)
+
+        return path

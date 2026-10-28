@@ -18,6 +18,9 @@ from pawteam_api.api.routes.knowledge import (
     agent_binding_router,
     router as knowledge_router,
 )
+from pawteam_api.api.routes.knowledge_documents import (
+    router as knowledge_documents_router,
+)
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router)
@@ -34,3 +37,4 @@ api_router.include_router(teams_router)
 api_router.include_router(wecom_webhooks_router)
 api_router.include_router(knowledge_router)
 api_router.include_router(agent_binding_router)
+api_router.include_router(knowledge_documents_router)
