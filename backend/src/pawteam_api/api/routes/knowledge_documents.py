@@ -30,7 +30,17 @@ from pawteam_api.knowledge.storage import (
     KnowledgeFileTooLargeError,
     LocalKnowledgeFileStore,
 )
-from pawteam_api.knowledge_schemas import KnowledgeDocumentVersionResponse
+from pawteam_api.knowledge.parsing import (
+    KnowledgeDocumentParseResultNotReadyError,
+    KnowledgeDocumentParsingConflictError,
+    KnowledgeDocumentParsingFailedError,
+    KnowledgeParsingService,
+)
+
+from pawteam_api.knowledge_schemas import (
+    KnowledgeDocumentParseResultResponse,
+    KnowledgeDocumentVersionResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +65,60 @@ FileStoreDependency = Annotated[
     LocalKnowledgeFileStore,
     Depends(get_knowledge_file_store),
 ]
+
+async def get_knowledge_parsing_service(
+    request: Request,
+) -> KnowledgeParsingService:
+    """获取当前应用实例的解析 Service，不在依赖中创建数据库会话。"""
+
+    return request.app.state.knowledge_parsing_service
+
+
+ParsingServiceDependency = Annotated[
+    KnowledgeParsingService,
+    Depends(get_knowledge_parsing_service),
+]
+
+
+def translate_parsing_error(error: Exception) -> HTTPException:
+    """统一转换解析接口错误，避免两个端点维护不同的错误规则。"""
+
+    if isinstance(error, KnowledgeDocumentVersionNotFoundError):
+        return HTTPException(
+            status_code=404,
+            detail="Document version not found",
+        )
+
+    if isinstance(error, KnowledgeDocumentParseResultNotReadyError):
+        return HTTPException(
+            status_code=409,
+            detail="Parse result is not available",
+        )
+
+    if isinstance(error, KnowledgeDocumentParsingConflictError):
+        return HTTPException(
+            status_code=409,
+            detail=str(error),
+        )
+
+    if isinstance(error, KnowledgeDocumentParsingFailedError):
+        # 该异常表示 Service 已保存 parse_failed 和错误原因。
+        # 本轮统一用 422 表达“本次源文件处理未成功”。
+        return HTTPException(
+            status_code=422,
+            detail=str(error),
+        )
+
+    # 未预期故障需要记录堆栈，但不能向客户端返回绝对路径、
+    # SQL 内容或底层异常字符串。
+    logger.error(
+        "Unexpected knowledge parsing failure",
+        exc_info=(type(error), error, error.__traceback__),
+    )
+    return HTTPException(
+        status_code=500,
+        detail="Knowledge parsing operation failed",
+    )
 
 
 @router.post(
@@ -173,3 +237,46 @@ async def get_document_version(
             status_code=404,
             detail="Document version not found",
         ) from error
+
+
+@router.post(
+    "/{document_id}/versions/{version_id}/parse",
+    response_model=KnowledgeDocumentParseResultResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def parse_document_version(
+    document_id: str,
+    version_id: str,
+    parsing_service: ParsingServiceDependency,
+) -> KnowledgeDocumentParseResultResponse:
+    """执行解析；已经成功的版本返回已保存结果。"""
+
+    try:
+        return await parsing_service.parse_version(
+            document_id=document_id,
+            version_id=version_id,
+        )
+    except Exception as error:
+        # 在 HTTP 边界转换错误，Service 保持不依赖 FastAPI。
+        # 未预期错误会由转换函数记录堆栈并返回通用 500。
+        raise translate_parsing_error(error) from error
+
+
+@router.get(
+    "/{document_id}/versions/{version_id}/parse-result",
+    response_model=KnowledgeDocumentParseResultResponse,
+)
+async def get_document_parse_result(
+    document_id: str,
+    version_id: str,
+    parsing_service: ParsingServiceDependency,
+) -> KnowledgeDocumentParseResultResponse:
+    """只查询已有结果，绝不隐式触发解析。"""
+
+    try:
+        return await parsing_service.get_result(
+            document_id=document_id,
+            version_id=version_id,
+        )
+    except Exception as error:
+        raise translate_parsing_error(error) from error

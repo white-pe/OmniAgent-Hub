@@ -112,3 +112,15 @@ class KnowledgeDocumentVersionResponse(BaseModel):
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class KnowledgeDocumentParseResultResponse(BaseModel):
+    """返回解析后的文本及其处理规则，不暴露文件存储位置。"""
+
+    version_id: str
+    text: str
+    char_count: int
+    source_format: str
+    parser_name: str
+    parser_version: str
+    created_at: datetime

@@ -262,3 +262,165 @@ def test_list_versions_rejects_invalid_pagination(
     response = client.get(path, params=params)
 
     assert response.status_code == 422
+
+
+def test_parse_api_lifecycle(
+    upload_api: tuple[TestClient, str],
+) -> None:
+    """覆盖查询未就绪、执行解析、查询结果和重复执行。"""
+
+    client, path = upload_api
+
+    uploaded = client.post(
+        path,
+        files={
+            "file": (
+                "guide.md",
+                b"# Guide\r\nbody",
+                "text/markdown",
+            )
+        },
+    )
+    assert uploaded.status_code == 201
+    version_path = f"{path}/{uploaded.json()['id']}"
+
+    # GET 不得隐式启动解析。
+    before = client.get(f"{version_path}/parse-result")
+    assert before.status_code == 409
+    assert client.get(version_path).json()["status"] == "uploaded"
+
+    parsed = client.post(f"{version_path}/parse")
+    assert parsed.status_code == 200
+    result = parsed.json()
+
+    assert result["version_id"] == uploaded.json()["id"]
+    assert result["text"] == "# Guide\nbody"
+    assert result["char_count"] == len(result["text"])
+    assert result["source_format"] == "markdown"
+    assert result["parser_name"] == "utf8-text"
+    assert result["parser_version"] == "1"
+    assert "storage_key" not in result
+
+    fetched = client.get(f"{version_path}/parse-result")
+    assert fetched.status_code == 200
+    assert fetched.json() == result
+
+    # 再次触发返回已有结果，不应生成第二份解析结果。
+    repeated = client.post(f"{version_path}/parse")
+    assert repeated.status_code == 200
+    assert repeated.json() == result
+
+    version = client.get(version_path)
+    assert version.status_code == 200
+    assert version.json()["status"] == "parsed"
+    assert version.json()["error_message"] is None
+
+
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    [
+        ("guide.md", b"\xff"),
+        ("blank.txt", b"   "),
+        ("guide.pdf", b"content"),
+    ],
+)
+def test_parse_api_persists_expected_failures(
+    upload_api: tuple[TestClient, str],
+    filename: str,
+    content: bytes,
+) -> None:
+    """返回失败响应后，仍应能查询到已提交的失败状态。"""
+
+    client, path = upload_api
+
+    uploaded = client.post(
+        path,
+        files={"file": (filename, content, "application/octet-stream")},
+    )
+    assert uploaded.status_code == 201
+    version_path = f"{path}/{uploaded.json()['id']}"
+
+    failed = client.post(f"{version_path}/parse")
+    assert failed.status_code == 422
+    assert failed.json()["detail"]
+
+    version = client.get(version_path)
+    assert version.status_code == 200
+    assert version.json()["status"] == "parse_failed"
+    assert version.json()["error_message"]
+
+    # 解析失败不能产生一份看起来成功的结果。
+    result = client.get(f"{version_path}/parse-result")
+    assert result.status_code == 409
+
+
+def test_parse_api_checks_version_membership(
+    upload_api: tuple[TestClient, str],
+) -> None:
+    """查询与执行都必须校验文档和版本的归属关系。"""
+
+    client, path = upload_api
+    uploaded = client.post(
+        path,
+        files={"file": ("guide.md", b"content", "text/markdown")},
+    )
+    assert uploaded.status_code == 201
+    version_id = uploaded.json()["id"]
+
+    knowledge = client.post(
+        "/api/knowledge-bases",
+        json={"name": "Other Parsing Docs"},
+    )
+    assert knowledge.status_code == 201
+
+    other = client.post(
+        f"/api/knowledge-bases/{knowledge.json()['id']}/documents",
+        json={"title": "Other Document"},
+    )
+    assert other.status_code == 201
+    other_id = other.json()["id"]
+
+    invalid_paths = [
+        f"{path}/missing-version",
+        f"/api/knowledge-documents/{other_id}/versions/{version_id}",
+    ]
+
+    for version_path in invalid_paths:
+        assert client.post(f"{version_path}/parse").status_code == 404
+        assert client.get(
+            f"{version_path}/parse-result"
+        ).status_code == 404
+
+
+def test_parse_api_hides_unexpected_error_details(
+    upload_api: tuple[TestClient, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """系统异常应返回通用 500，不暴露底层路径或错误详情。"""
+
+    client, path = upload_api
+    uploaded = client.post(
+        path,
+        files={"file": ("guide.md", b"content", "text/markdown")},
+    )
+    assert uploaded.status_code == 201
+    version_path = f"{path}/{uploaded.json()['id']}"
+
+    def broken_parser(*args: object) -> None:
+        raise RuntimeError("internal parser failure at /private/example")
+
+    # 每个 fixture 都创建独立应用，monkeypatch 会在测试结束后恢复。
+    parser = client.app.state.knowledge_parsing_service.parser
+    monkeypatch.setattr(parser, "parse", broken_parser)
+
+    response = client.post(f"{version_path}/parse")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": "Knowledge parsing operation failed"
+    }
+    assert "/private/example" not in response.text
+
+    # 未预期故障不应伪装成成功，也没有进入结果发布事务。
+    version = client.get(version_path)
+    assert version.json()["status"] == "uploaded"

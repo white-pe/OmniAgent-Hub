@@ -22,6 +22,8 @@ from pawteam_api.security.secret_store import SecretStore
 from pawteam_api.tools.registry import ToolRegistry
 from pawteam_api.workspaces.store import WorkspaceStore
 from pawteam_api.knowledge.storage import LocalKnowledgeFileStore
+from pawteam_api.knowledge.parsers import KnowledgeTextParser
+from pawteam_api.knowledge.parsing import KnowledgeParsingService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -41,6 +43,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.auth_manager = auth_manager
         app.state.db_engine = create_database_engine(resolved_settings)
         app.state.session_factory = create_session_factory(app.state.db_engine)
+        # 必须在 session_factory 和 knowledge_file_store 初始化后创建。
+        # Service 只保存组件引用，每次调用自行创建独立数据库会话。
+        app.state.knowledge_parsing_service = KnowledgeParsingService(
+            session_factory=app.state.session_factory,
+            file_store=app.state.knowledge_file_store,
+            parser=KnowledgeTextParser(),
+        )
         app.state.secret_store = SecretStore(resolved_settings)
         app.state.workspace_store = WorkspaceStore(resolved_settings)
         app.state.tool_registry = ToolRegistry(
