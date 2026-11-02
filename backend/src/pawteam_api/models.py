@@ -734,3 +734,48 @@ class KnowledgeDocumentVersion(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class KnowledgeDocumentParseResult(Base):
+    """一个源文件版本当前采用的文本解析结果。"""
+
+    __tablename__ = "knowledge_document_parse_results"
+    __table_args__ = (
+        # 非空文本是成功解析的最低条件。
+        # char_count 与实际文本长度的一致性，由后续 Service 统一保证。
+        CheckConstraint(
+            "char_count > 0",
+            name="ck_knowledge_parse_result_char_count_positive",
+        ),
+    )
+
+    # 直接用源文件版本 ID 作为主键，同时也是外键：
+    # 一个版本最多保存一份当前解析结果，不能重复插入。
+    # 删除源文件版本时，关联解析结果一起删除。
+    version_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_document_versions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+    # 保存规范化后的文本，后续切块从这里读取，
+    # 不必每次重新打开原文件、解码、规范化换行。
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # 这里记录字符数，不是 UTF-8 字节数。
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # 对应解析器返回的 txt 或 markdown。
+    # 使用字符串方便后续扩展其他格式。
+    source_format: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    # 记录产生这份文本的处理规则，方便诊断和后续重新解析。
+    parser_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    # 表示这份解析结果生成的时间。
+    # 将来重新解析时，需要明确替换结果并更新这一时间。
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )

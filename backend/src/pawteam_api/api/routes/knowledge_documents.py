@@ -8,6 +8,7 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
@@ -22,6 +23,7 @@ from pawteam_api.knowledge.documents import (
     KnowledgeDocumentService,
     KnowledgeDocumentUploadCleanupError,
     KnowledgeDocumentVersionConflictError,
+    KnowledgeDocumentVersionNotFoundError,
 )
 from pawteam_api.knowledge.storage import (
     KnowledgeFileEmptyError,
@@ -118,3 +120,56 @@ async def upload_document_version(
         # 成功或失败后，都释放上传文件持有的资源。
         # 数据库事务与业务文件清理由 Service 负责。
         await file.close()
+
+@router.get(
+    "/{document_id}/versions",
+    response_model=list[KnowledgeDocumentVersionResponse],
+)
+async def list_document_versions(
+    document_id: str,
+    session: SessionDependency,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[KnowledgeDocumentVersionResponse]:
+    """分页返回版本元信息，不读取磁盘上的源文件。"""
+
+    try:
+        return await KnowledgeDocumentService(session).list_versions(
+            document_id=document_id,
+            limit=limit,
+            offset=offset,
+        )
+    except KnowledgeDocumentNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        ) from error
+
+
+@router.get(
+    "/{document_id}/versions/{version_id}",
+    response_model=KnowledgeDocumentVersionResponse,
+)
+async def get_document_version(
+    document_id: str,
+    version_id: str,
+    session: SessionDependency,
+) -> KnowledgeDocumentVersionResponse:
+    """返回指定文档版本的元信息。"""
+
+    try:
+        return await KnowledgeDocumentService(session).get_version(
+            document_id=document_id,
+            version_id=version_id,
+        )
+    except KnowledgeDocumentNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        ) from error
+    except KnowledgeDocumentVersionNotFoundError as error:
+        # 版本不存在、版本属于其他文档，都返回相同的版本不存在响应。
+        raise HTTPException(
+            status_code=404,
+            detail="Document version not found",
+        ) from error

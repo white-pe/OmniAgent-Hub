@@ -72,6 +72,14 @@ class Settings(BaseSettings):
         le=1024 * 1024 * 1024,
     )
 
+    # 这是“把一个源文件完整读入内存”的上限，与上传限制分开配置。
+    # 当前先支持小型 TXT / Markdown 文件；大文件解析以后走流式方案。
+    knowledge_max_read_bytes: int = Field(
+        default=20 * 1024 * 1024,
+        ge=1,
+        le=64 * 1024 * 1024,
+    )
+
     def ensure_directories(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.secrets_dir.mkdir(parents=True, exist_ok=True)

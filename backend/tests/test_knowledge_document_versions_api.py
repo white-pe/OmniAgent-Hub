@@ -146,3 +146,119 @@ def test_upload_requires_document_and_file(
     assert missing_file.status_code == 422
 
     assert not list((tmp_path / "knowledge-files").rglob("*.bin"))
+
+
+def test_list_versions_orders_and_paginates(
+    upload_api: tuple[TestClient, str],
+) -> None:
+    """验证空列表、倒序排列、分页和响应字段。"""
+
+    client, path = upload_api
+
+    # 文档已经创建，但还没有上传过版本。
+    empty = client.get(path)
+    assert empty.status_code == 200
+    assert empty.json() == []
+
+    first = client.post(
+        path,
+        files={"file": ("guide.md", b"first", "text/markdown")},
+    )
+    second = client.post(
+        path,
+        files={"file": ("guide.md", b"second", "text/markdown")},
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    listed = client.get(path)
+    assert listed.status_code == 200
+    versions = listed.json()
+
+    # 版本号降序，最新版本优先展示。
+    assert [item["version_number"] for item in versions] == [2, 1]
+    assert versions[0]["id"] == second.json()["id"]
+    assert all("storage_key" not in item for item in versions)
+
+    page = client.get(path, params={"limit": 1, "offset": 1})
+    assert page.status_code == 200
+    assert [item["id"] for item in page.json()] == [first.json()["id"]]
+
+    # 超出已有记录数量的分页应返回空列表，不是 404。
+    beyond_last_page = client.get(path, params={"offset": 10})
+    assert beyond_last_page.status_code == 200
+    assert beyond_last_page.json() == []
+
+
+def test_get_version_checks_document_membership(
+    upload_api: tuple[TestClient, str],
+) -> None:
+    """验证详情查询，以及版本不能通过其他文档的路径访问。"""
+
+    client, path = upload_api
+
+    uploaded = client.post(
+        path,
+        files={"file": ("guide.md", b"content", "text/markdown")},
+    )
+    assert uploaded.status_code == 201
+    version = uploaded.json()
+
+    detail = client.get(f"{path}/{version['id']}")
+    assert detail.status_code == 200
+    assert detail.json() == version
+    assert "storage_key" not in detail.json()
+
+    # 文档存在，但指定版本不存在。
+    missing_version = client.get(f"{path}/missing-version")
+    assert missing_version.status_code == 404
+    assert missing_version.json()["detail"] == "Document version not found"
+
+    # 创建另一个真实存在的文档，验证父子资源关系检查。
+    knowledge = client.post(
+        "/api/knowledge-bases",
+        json={"name": "Other Version Docs"},
+    )
+    assert knowledge.status_code == 201
+    knowledge_id = knowledge.json()["id"]
+
+    other_document = client.post(
+        f"/api/knowledge-bases/{knowledge_id}/documents",
+        json={"title": "Other Guide"},
+    )
+    assert other_document.status_code == 201
+    other_id = other_document.json()["id"]
+
+    wrong_document = client.get(
+        f"/api/knowledge-documents/{other_id}/versions/{version['id']}"
+    )
+    assert wrong_document.status_code == 404
+    assert wrong_document.json()["detail"] == "Document version not found"
+
+    # 文档本身不存在时，列表和详情都必须返回 404。
+    missing_path = "/api/knowledge-documents/missing-document/versions"
+    assert client.get(missing_path).status_code == 404
+    assert client.get(
+        f"{missing_path}/{version['id']}"
+    ).status_code == 404
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"limit": 0},
+        {"limit": 101},
+        {"offset": -1},
+    ],
+)
+def test_list_versions_rejects_invalid_pagination(
+    upload_api: tuple[TestClient, str],
+    params: dict[str, int],
+) -> None:
+    """非法分页参数应由请求校验直接拒绝。"""
+
+    client, path = upload_api
+
+    response = client.get(path, params=params)
+
+    assert response.status_code == 422

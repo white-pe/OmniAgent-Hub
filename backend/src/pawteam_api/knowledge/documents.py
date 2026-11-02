@@ -48,6 +48,10 @@ class KnowledgeDocumentMediaTypeError(ValueError):
     """上传方提供的 MIME 类型不符合元数据约束。"""
 
 
+class KnowledgeDocumentVersionNotFoundError(LookupError):
+    """指定版本不存在，或该版本不属于当前文档。"""
+
+
 class KnowledgeDocumentService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -198,6 +202,70 @@ class KnowledgeDocumentService:
         await self.session.refresh(version)
 
         return self._version_response(version)
+
+
+    async def list_versions(
+        self,
+        document_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[KnowledgeDocumentVersionResponse]:
+        """分页查询文档版本，按版本号从大到小排列。"""
+
+        # Service 也检查分页边界，保证后台任务、CLI 等直接调用时
+        # 不会绕过 HTTP 层的参数校验，导致无界查询。
+        if not 1 <= limit <= 100:
+            raise ValueError("Limit must be between 1 and 100")
+        if offset < 0:
+            raise ValueError("Offset must not be negative")
+
+        # 区分两种情况：
+        # 文档不存在 -> 抛出异常，HTTP 层返回 404。
+        # 文档存在但没有版本 -> 正常返回空列表。
+        await self._require_document(document_id)
+
+        versions = (
+            await self.session.scalars(
+                select(KnowledgeDocumentVersion)
+                .where(
+                    KnowledgeDocumentVersion.document_id == document_id
+                )
+                # 同一文档的版本号唯一，因此可以稳定排序。
+                # 不按创建时间排序，避免多个版本时间相同时顺序不确定。
+                .order_by(
+                    KnowledgeDocumentVersion.version_number.desc()
+                )
+                .limit(limit)
+                .offset(offset)
+            )
+        ).all()
+
+        # 沿用现有响应转换方法，确保不向外暴露 storage_key。
+        return [self._version_response(version) for version in versions]
+
+    async def get_version(
+        self,
+        document_id: str,
+        version_id: str,
+    ) -> KnowledgeDocumentVersionResponse:
+        """查询属于指定文档的某个版本。"""
+
+        await self._require_document(document_id)
+
+        # 必须同时检查版本 ID 和文档 ID。
+        # 只按 version_id 查询，会让 URL 中的 document_id 失去约束作用。
+        version = await self.session.scalar(
+            select(KnowledgeDocumentVersion).where(
+                KnowledgeDocumentVersion.id == version_id,
+                KnowledgeDocumentVersion.document_id == document_id,
+            )
+        )
+
+        if version is None:
+            raise KnowledgeDocumentVersionNotFoundError(version_id)
+
+        return self._version_response(version)
+
 
     async def _require_knowledge_base(
         self,
