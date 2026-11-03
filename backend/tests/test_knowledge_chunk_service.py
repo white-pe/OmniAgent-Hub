@@ -14,7 +14,10 @@ from pawteam_api.knowledge.chunk_service import (
     KnowledgeChunkingService,
     KnowledgeChunkSourceNotReadyError,
 )
-from pawteam_api.knowledge_schemas import KnowledgeChunkingConfig
+from pawteam_api.knowledge_schemas import (
+    KnowledgeChunkingConfig,
+    KnowledgeChunkResponse,
+)
 from pawteam_api.models import (
     Base,
     KnowledgeBase,
@@ -104,6 +107,28 @@ async def create_parsed_source(
 
     return document_id, version_id
 
+async def read_saved_chunks(
+    factory: async_sessionmaker[AsyncSession],
+    chunk_set_id: str,
+) -> list[KnowledgeChunkResponse]:
+    """直接读取落库结果，验证创建操作确实保存了片段。"""
+
+    async with factory() as session:
+        records = (
+            await session.scalars(
+                select(KnowledgeChunk)
+                .where(KnowledgeChunk.chunk_set_id == chunk_set_id)
+                .order_by(KnowledgeChunk.chunk_index)
+            )
+        ).all()
+
+        return [
+            KnowledgeChunkResponse.model_validate(
+                record,
+                from_attributes=True,
+            )
+            for record in records
+        ]
 
 @pytest.mark.asyncio
 async def test_service_persists_batch_and_source_offsets(
@@ -127,13 +152,15 @@ async def test_service_persists_batch_and_source_offsets(
         KnowledgeChunkingConfig(chunk_size=8, chunk_overlap=2),
     )
 
+    chunks = await read_saved_chunks(factory, result.id)
+
     assert result.version_id == version_id
     assert result.splitter_name == "boundary-character"
     assert result.splitter_version == "1"
     assert result.source_text_sha256
-    assert [chunk.chunk_index for chunk in result.chunks] == [0, 1, 2]
+    assert [chunk.chunk_index for chunk in chunks] == [0, 1, 2]
 
-    for chunk in result.chunks:
+    for chunk in chunks:
         assert chunk.text == source_text[chunk.start_char:chunk.end_char]
         assert chunk.char_count == len(chunk.text)
         assert chunk.char_count <= result.chunk_size
@@ -160,15 +187,17 @@ async def test_same_configuration_reuses_existing_batch(
         version_id,
         config,
     )
+    first_chunks = await read_saved_chunks(factory, first.id)
     repeated = await service.create_chunk_set(
         document_id,
         version_id,
         config,
     )
+    repeated_chunks = await read_saved_chunks(factory, repeated.id)
 
     assert repeated.id == first.id
-    assert [chunk.id for chunk in repeated.chunks] == [
-        chunk.id for chunk in first.chunks
+    assert [chunk.id for chunk in repeated_chunks] == [
+        chunk.id for chunk in first_chunks
     ]
 
     async with factory() as session:

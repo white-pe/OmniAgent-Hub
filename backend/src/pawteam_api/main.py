@@ -24,6 +24,7 @@ from pawteam_api.workspaces.store import WorkspaceStore
 from pawteam_api.knowledge.storage import LocalKnowledgeFileStore
 from pawteam_api.knowledge.parsers import KnowledgeTextParser
 from pawteam_api.knowledge.parsing import KnowledgeParsingService
+from pawteam_api.knowledge.chunk_service import KnowledgeChunkingService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -43,6 +44,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.auth_manager = auth_manager
         app.state.db_engine = create_database_engine(resolved_settings)
         app.state.session_factory = create_session_factory(app.state.db_engine)
+        # Service 只保存 Session 工厂，可以由当前应用实例复用。
+        # 每次创建批次时，仍由 Service 自行打开独立会话和事务。
+        app.state.knowledge_chunking_service = KnowledgeChunkingService(
+            session_factory=app.state.session_factory,
+        )
         # 必须在 session_factory 和 knowledge_file_store 初始化后创建。
         # Service 只保存组件引用，每次调用自行创建独立数据库会话。
         app.state.knowledge_parsing_service = KnowledgeParsingService(

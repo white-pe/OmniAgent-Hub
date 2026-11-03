@@ -17,8 +17,7 @@ from pawteam_api.knowledge.documents import (
 )
 from pawteam_api.knowledge_schemas import (
     KnowledgeChunkingConfig,
-    KnowledgeChunkResponse,
-    KnowledgeChunkSetResponse,
+    KnowledgeChunkSetSummary,
 )
 from pawteam_api.models import (
     KnowledgeChunk,
@@ -41,11 +40,11 @@ class KnowledgeChunkingService:
         self.session_factory = session_factory
 
     async def create_chunk_set(
-        self,
-        document_id: str,
-        version_id: str,
-        config: KnowledgeChunkingConfig,
-    ) -> KnowledgeChunkSetResponse:
+            self,
+            document_id: str,
+            version_id: str,
+            config: KnowledgeChunkingConfig,
+    ) -> KnowledgeChunkSetSummary:
         """生成一份切块批次；相同文本与配置会复用已有批次。"""
 
         async with self.session_factory() as session:
@@ -89,6 +88,18 @@ class KnowledgeChunkingService:
             source_text.encode("utf-8")
         ).hexdigest()
 
+        # 相同文本、算法版本和参数已有结果时，直接返回摘要。
+        # 这一步必须发生在 split() 之前，避免重复请求再次计算切块。
+        async with self.session_factory() as session:
+            existing = await self._find_chunk_set(
+                session=session,
+                version_id=version_id,
+                source_text_sha256=source_text_sha256,
+                config=config,
+            )
+            if existing is not None:
+                return self._response(existing)
+
         chunker = KnowledgeTextChunker(config)
 
         # 切块属于同步 CPU 工作。文本量目前受解析阶段限制，
@@ -129,7 +140,7 @@ class KnowledgeChunkingService:
                     config=config,
                 )
                 if existing is not None:
-                    return await self._response(session, existing)
+                    return self._response(existing)
 
                 chunk_set = KnowledgeChunkSet(
                     id=str(uuid4()),
@@ -157,7 +168,7 @@ class KnowledgeChunkingService:
                 await session.refresh(chunk_set)
 
                 # 返回 Pydantic 响应值，而不是让 ORM 对象逃出 Session。
-                return await self._response(session, chunk_set)
+                return self._response(chunk_set)
 
         except IntegrityError:
             # 两个相同请求可能同时查不到批次，然后竞争插入唯一配置。
@@ -170,7 +181,7 @@ class KnowledgeChunkingService:
                     config=config,
                 )
                 if existing is not None:
-                    return await self._response(session, existing)
+                    return self._response(existing)
 
             # 如果没有相同配置的批次，IntegrityError 很可能来自其他约束；
             # 不要把真实数据错误伪装成幂等成功。
@@ -222,43 +233,13 @@ class KnowledgeChunkingService:
             end_char=chunk.end_char,
         )
 
-    async def _response(
-        self,
-        session: AsyncSession,
-        chunk_set: KnowledgeChunkSet,
-    ) -> KnowledgeChunkSetResponse:
-        """读取该批次的片段，并转换为稳定的 API Schema。"""
+    @staticmethod
+    def _response(
+            chunk_set: KnowledgeChunkSet,
+    ) -> KnowledgeChunkSetSummary:
+        """只返回批次元信息，不再次加载整批片段。"""
 
-        chunks = (
-            await session.scalars(
-                select(KnowledgeChunk)
-                .where(KnowledgeChunk.chunk_set_id == chunk_set.id)
-                .order_by(KnowledgeChunk.chunk_index)
-            )
-        ).all()
-
-        if not chunks:
-            # 正常写入流程不会产生空批次。已有空批次说明数据不完整。
-            raise RuntimeError("Chunk set has no chunks")
-
-        return KnowledgeChunkSetResponse(
-            id=chunk_set.id,
-            version_id=chunk_set.version_id,
-            source_text_sha256=chunk_set.source_text_sha256,
-            splitter_name=chunk_set.splitter_name,
-            splitter_version=chunk_set.splitter_version,
-            chunk_size=chunk_set.chunk_size,
-            chunk_overlap=chunk_set.chunk_overlap,
-            created_at=chunk_set.created_at,
-            chunks=[
-                KnowledgeChunkResponse(
-                    id=chunk.id,
-                    chunk_index=chunk.chunk_index,
-                    text=chunk.text,
-                    char_count=chunk.char_count,
-                    start_char=chunk.start_char,
-                    end_char=chunk.end_char,
-                )
-                for chunk in chunks
-            ],
-        )
+        # Summary 已启用 from_attributes=True，
+        # 可以从 ORM 对象读取声明过的同名字段。
+        # 在 Session 内完成转换，返回独立的响应对象。
+        return KnowledgeChunkSetSummary.model_validate(chunk_set)
