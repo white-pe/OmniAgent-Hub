@@ -779,3 +779,117 @@ class KnowledgeDocumentParseResult(Base):
         server_default=func.now(),
         nullable=False,
     )
+
+
+class KnowledgeChunkSet(Base):
+    """针对一份解析文本和一组配置生成的切块批次。"""
+
+    __tablename__ = "knowledge_chunk_sets"
+    __table_args__ = (
+        # 相同源文本、算法版本和参数只保存一份批次。
+        # 不同参数允许并存，方便后续做检索效果对比。
+        UniqueConstraint(
+            "version_id",
+            "source_text_sha256",
+            "splitter_name",
+            "splitter_version",
+            "chunk_size",
+            "chunk_overlap",
+            name="uq_knowledge_chunk_set_config",
+        ),
+        CheckConstraint(
+            "chunk_size > 0",
+            name="ck_knowledge_chunk_set_size_positive",
+        ),
+        CheckConstraint(
+            "chunk_overlap >= 0 AND chunk_overlap < chunk_size",
+            name="ck_knowledge_chunk_set_overlap_valid",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+
+    # 直接依赖解析结果，避免为尚未解析的版本创建切块产物。
+    # 删除解析结果时，对应批次及其片段也应被删除。
+    version_id: Mapped[str] = mapped_column(
+        ForeignKey(
+            "knowledge_document_parse_results.version_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+
+    # 这是“规范化后解析文本”的摘要，不是上传原文件的摘要。
+    # 后续 Service 会对 parse_result.text.encode("utf-8") 计算。
+    source_text_sha256: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )
+
+    # 记录本项目定义的算法及规则版本。
+    # 将来分隔符、清洗规则或依赖行为变化，需要升级 splitter_version。
+    splitter_name: Mapped[str] = mapped_column(
+        String(100), nullable=False
+    )
+    splitter_version: Mapped[str] = mapped_column(
+        String(30), nullable=False
+    )
+
+    # 本阶段明确按 Python 字符数量计量，不是字节数或模型 token 数。
+    chunk_size: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # 表示期望的重叠上限。
+    # 后续采用结构分割时，相邻片段不一定恰好重叠这么多字符。
+    chunk_overlap: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class KnowledgeChunk(Base):
+    """一个切块批次中的文本片段及其原文位置。"""
+
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "chunk_set_id",
+            "chunk_index",
+            name="uq_knowledge_chunk_set_index",
+        ),
+        CheckConstraint(
+            "chunk_index >= 0",
+            name="ck_knowledge_chunk_index_nonnegative",
+        ),
+        CheckConstraint(
+            "start_char >= 0 AND end_char > start_char",
+            name="ck_knowledge_chunk_offsets_valid",
+        ),
+        CheckConstraint(
+            "char_count = end_char - start_char",
+            name="ck_knowledge_chunk_char_count_matches_span",
+        ),
+    )
+
+    # 使用独立 UUID，方便未来向量记录和引用结果关联具体片段。
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    chunk_set_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_chunk_sets.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # 从 0 开始编号，查询时必须显式按该字段排序。
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # 使用左闭右开区间，对应解析文本：
+    # parse_result.text[start_char:end_char] == chunk.text
+    # 这是规范化文本的位置，不是原始文件的字节位置。
+    start_char: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_char: Mapped[int] = mapped_column(Integer, nullable=False)
