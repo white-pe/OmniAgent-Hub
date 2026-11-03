@@ -893,3 +893,105 @@ class KnowledgeChunk(Base):
     # 这是规范化文本的位置，不是原始文件的字节位置。
     start_char: Mapped[int] = mapped_column(Integer, nullable=False)
     end_char: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class KnowledgeEmbeddingProfile(Base):
+    """描述一组生成文档和查询向量所使用的配置。"""
+
+    __tablename__ = "knowledge_embedding_profiles"
+    __table_args__ = (
+        # 完全相同的配置只保存一份。
+        # base_url 保存快照，不能仅依赖未来可能修改的 Provider 地址。
+        UniqueConstraint(
+            "provider_id",
+            "base_url",
+            "model_name",
+            "model_revision",
+            "dimensions",
+            "send_dimensions",
+            "input_policy_version",
+            name="uq_knowledge_embedding_profile_config",
+        ),
+        CheckConstraint(
+            "dimensions > 0",
+            name="ck_knowledge_embedding_dimensions_positive",
+        ),
+        Index(
+            "ix_knowledge_embedding_profiles_provider_id",
+            "provider_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+    )
+
+    # 配置引用的 Provider 不允许直接删除。
+    # 密钥仍由 Provider + SecretStore 管理，不复制到本表。
+    provider_id: Mapped[str] = mapped_column(
+        ForeignKey("providers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    # 保存生成向量时使用的地址；后续执行时要检查配置是否发生漂移。
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    # 这是平台维护的版本标签，不代表上游已经固定模型权重。
+    model_revision: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    send_dimensions: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    # raw-v1 表示当前直接使用片段正文。
+    # 将来添加指令前缀、清洗等规则，需要建立新策略版本和新配置。
+    input_policy_version: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class KnowledgeChunkEmbedding(Base):
+    """一个片段在指定 Embedding 配置下对应的一份向量。"""
+
+    __tablename__ = "knowledge_chunk_embeddings"
+    __table_args__ = (
+        # 联合主键已支持按 profile_id 查询；
+        # 另加 chunk_id 索引，服务片段关联查询和删除清理。
+        Index(
+            "ix_knowledge_chunk_embeddings_chunk_id",
+            "chunk_id",
+        ),
+    )
+
+    # 联合主键保证：
+    # 同一配置 + 同一片段，最多保存一份向量。
+    profile_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_embedding_profiles.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    chunk_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_chunks.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+    # 当前先保存原始数值，维度从 profile 读取，不重复维护。
+    # 写入前必须由后续持久化 Service 使用 EmbeddingBatch 校验。
+    vector: Mapped[list[float]] = mapped_column(
+        JSON(none_as_null=True),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
