@@ -2,7 +2,13 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 class KnowledgeBaseCreate(BaseModel):
@@ -124,3 +130,79 @@ class KnowledgeDocumentParseResultResponse(BaseModel):
     parser_name: str
     parser_version: str
     created_at: datetime
+
+
+class KnowledgeChunkingConfig(BaseModel):
+    """一组可复现的切块参数，长度单位是 Unicode 字符。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # 设置默认值，后续 API 可不带参数直接使用这组基准配置。
+    # 最大值用于限制单块大小，不能替代 embedding 模型的 Token 限制。
+    chunk_size: int = Field(default=800, ge=1, le=10_000)
+
+    # 重叠减少边界处上下文断裂，但会增加存储和后续向量化成本。
+    chunk_overlap: int = Field(default=100, ge=0, le=9_999)
+
+    @model_validator(mode="after")
+    def overlap_must_be_smaller_than_chunk(self) -> "KnowledgeChunkingConfig":
+        # 数据库也有同样约束；这里提前给调用方清楚的参数校验错误。
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError("Chunk overlap must be smaller than chunk size")
+        return self
+
+
+class KnowledgeChunkResponse(BaseModel):
+    """返回一个片段及其在解析文本中的字符位置。"""
+
+    id: str
+    chunk_index: int
+    text: str
+    char_count: int
+    start_char: int
+    end_char: int
+
+
+class KnowledgeChunkSetResponse(BaseModel):
+    """返回一次切块批次的参数和全部片段。"""
+
+    id: str
+    version_id: str
+    source_text_sha256: str
+    splitter_name: str
+    splitter_version: str
+    chunk_size: int
+    chunk_overlap: int
+    created_at: datetime
+    chunks: list[KnowledgeChunkResponse]
+
+
+class KnowledgeChunkSetSummary(BaseModel):
+    """批次元信息，用于列表和详情查询，不包含片段正文。"""
+
+    # 允许从 SQLAlchemy 对象的同名属性读取字段。
+    # 在数据库会话关闭前，将 ORM 对象转换为独立的响应对象。
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    version_id: str
+    source_text_sha256: str
+    splitter_name: str
+    splitter_version: str
+    chunk_size: int
+    chunk_overlap: int
+    created_at: datetime
+
+
+class KnowledgeChunkPage(BaseModel):
+    """一个切块批次中的片段分页结果。"""
+
+    chunk_set_id: str
+
+    # total 是整个批次的片段数，不是当前页的片段数。
+    total: int
+    limit: int
+    offset: int
+
+    # 复用已有的片段响应模型，保持字符偏移字段定义一致。
+    items: list[KnowledgeChunkResponse]
