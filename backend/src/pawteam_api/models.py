@@ -995,3 +995,109 @@ class KnowledgeChunkEmbedding(Base):
         server_default=func.now(),
         nullable=False,
     )
+
+
+class KnowledgeVectorIndex(Base):
+    """一个切块批次在指定 Embedding Profile 下的索引状态。"""
+
+    __tablename__ = "knowledge_vector_indexes"
+    __table_args__ = (
+        # 仅允许服务端约定的状态值，避免状态拼写不一致。
+        CheckConstraint(
+            "status IN ('pending', 'indexing', 'indexed', 'failed')",
+            name="ck_knowledge_vector_index_status",
+        ),
+        CheckConstraint(
+            "expected_points >= 0 AND indexed_points >= 0",
+            name="ck_knowledge_vector_index_points_nonnegative",
+        ),
+        CheckConstraint(
+            "attempts >= 0",
+            name="ck_knowledge_vector_index_attempts_nonnegative",
+        ),
+        CheckConstraint(
+            "indexed_points <= expected_points",
+            name="ck_knowledge_vector_index_points_within_expected",
+        ),
+        Index(
+            "ix_knowledge_vector_indexes_status_lease",
+            "status",
+            "lease_until",
+        ),
+    )
+
+    # 一个 Profile + 一个切块批次最多对应一条索引任务状态。
+    profile_id: Mapped[str] = mapped_column(
+        ForeignKey(
+            "knowledge_embedding_profiles.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+    chunk_set_id: Mapped[str] = mapped_column(
+        ForeignKey(
+            "knowledge_chunk_sets.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+
+    # pending：等待处理；indexing：正在处理；
+    # indexed：所有点已写入；failed：上次处理失败，可重试。
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+    )
+
+    # expected_points 是关系数据库中应写入的片段数；
+    # indexed_points 记录服务确认写入的数量。
+    expected_points: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    indexed_points: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    # 每次开始处理时累加，可用于管理界面展示重试次数。
+    attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    # 只保存清理后的错误摘要，不保存向量、文档正文或密钥。
+    last_error: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    # 后续 worker 接手时用于识别超时任务，避免任务永久停在 indexing。
+    lease_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    indexed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

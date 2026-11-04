@@ -26,5 +26,16 @@ services:
     ports:
       - "127.0.0.1:8080:80"
 
+  qdrant:
+    image: qdrant/qdrant:v1.20.0
+    restart: unless-stopped
+    # 仅本机开发访问。Qdrant 默认没有认证，不要绑定到 0.0.0.0。
+    ports:
+      - "127.0.0.1:6333:6333"
+    # 即使容器被重建，向量数据仍保存在命名卷中。
+    volumes:
+      - qdrant-data:/qdrant/storage
+
 volumes:
   pawteam-data:
+  qdrant-data:

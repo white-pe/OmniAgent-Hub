@@ -65,6 +65,9 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5173",
         ]
     )
+    # 本地 Python 开发通过已绑定到回环地址的端口访问 Qdrant。
+    # Compose 中运行的后端会用服务名 qdrant 覆盖这个默认值。
+    qdrant_url: str = "http://127.0.0.1:6333"
 
     knowledge_max_upload_bytes: int = Field(
         default=20 * 1024 * 1024,
