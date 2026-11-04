@@ -9,7 +9,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-
+from typing import Literal
+from uuid import UUID
 
 class KnowledgeBaseCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -206,3 +207,98 @@ class KnowledgeChunkPage(BaseModel):
 
     # 复用已有的片段响应模型，保持字符偏移字段定义一致。
     items: list[KnowledgeChunkResponse]
+
+
+class KnowledgeVectorIndexResponse(BaseModel):
+    """索引任务的数据库状态，不包含向量和文档正文。"""
+
+    # 在 Session 关闭前，把 ORM 对象转换为独立响应。
+    model_config = ConfigDict(from_attributes=True)
+
+    profile_id: str
+    chunk_set_id: str
+    status: Literal["pending", "indexing", "indexed", "failed"]
+
+    expected_points: int
+    indexed_points: int
+    attempts: int
+
+    last_error: str | None
+    lease_until: datetime | None
+    indexed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class KnowledgeVectorIndexExecutionResponse(BaseModel):
+    """执行摘要；reused 表示本次复用了已完成状态。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    profile_id: str
+    chunk_set_id: str
+    point_count: int
+    reused: bool
+
+
+class KnowledgeEmbeddingProfileCreate(BaseModel):
+    """创建一份向量配置，不接收密钥或客户端指定的服务地址。"""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    # 从已有 Provider 及其模型中选择，避免手写模型名称产生拼写错误。
+    provider_id: UUID
+    model_id: UUID
+
+    # 平台维护的配置版本标签，不代表上游已经固定模型权重。
+    model_revision: str = Field(
+        default="1",
+        min_length=1,
+        max_length=100,
+    )
+
+    # 这里是平台的输入保护范围，不代表具体模型支持这些维度。
+    # strict=True 拒绝字符串数字及布尔值。
+    dimensions: int = Field(strict=True, ge=1, le=65_536)
+
+    # 只有确认模型支持 dimensions 参数时才启用。
+    send_dimensions: bool = Field(default=False, strict=True)
+
+    # 当前向量化服务只支持直接使用原始片段正文。
+    input_policy_version: Literal["raw-v1"] = "raw-v1"
+
+
+class KnowledgeEmbeddingProfileResponse(BaseModel):
+    """返回配置快照，不返回 Provider 密钥及其存储引用。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    provider_id: str
+    base_url: str
+    model_name: str
+    model_revision: str
+    dimensions: int
+    send_dimensions: bool
+    input_policy_version: str
+    created_at: datetime
+
+
+class KnowledgeEmbeddingExecutionResponse(BaseModel):
+    """返回向量化执行摘要，不返回体积较大的向量数组。"""
+
+    # Service 返回的是数据类。
+    # 开启此配置后，Pydantic 可以直接读取数据类的同名属性。
+    model_config = ConfigDict(from_attributes=True)
+
+    chunk_set_id: str
+    profile_id: str
+
+    # 本次批次包含的片段数量，不是模型请求次数。
+    chunk_count: int
+
+    # True 表示数据库已有完整有效的结果，本次直接复用。
+    reused: bool

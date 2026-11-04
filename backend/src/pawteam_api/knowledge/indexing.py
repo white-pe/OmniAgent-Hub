@@ -1,4 +1,5 @@
 """将关系数据库中已保存的向量幂等同步到 Qdrant。"""
+import asyncio
 
 from dataclasses import dataclass
 from uuid import UUID
@@ -20,7 +21,9 @@ from pawteam_api.models import (
     KnowledgeDocumentVersion,
     KnowledgeEmbeddingProfile,
 )
-
+from pawteam_api.knowledge.index_state import (
+    KnowledgeVectorIndexStateService,
+)
 
 class VectorIndexSourceError(RuntimeError):
     """数据库中的向量来源不完整或与索引配置不匹配。"""
@@ -33,6 +36,7 @@ class VectorIndexResult:
     profile_id: str
     chunk_set_id: str
     point_count: int
+    reused: bool = False
 
 
 class KnowledgeVectorIndexingService:
@@ -48,6 +52,7 @@ class KnowledgeVectorIndexingService:
         # Service 不保存跨请求复用的 Session。
         self.session_factory = session_factory
         self.vector_store = vector_store
+        self.index_state = KnowledgeVectorIndexStateService(session_factory)
 
     async def index_chunk_set(
         self,
@@ -170,17 +175,87 @@ class KnowledgeVectorIndexingService:
                 )
             ]
 
-        # Session 已关闭后再访问 Qdrant，避免网络 I/O 占用数据库连接。
-        # 必须先验证集合配置；适配器不会自动删除或重建不兼容集合。
-        await self.vector_store.initialize()
+        # 来源校验已完成，数据库 Session 已关闭。
+        # 领取任务后才允许访问 Qdrant，不跨网络请求持有数据库事务。
+        lease_seconds = 60
+        attempt = await self.index_state.claim(
+            profile_id=profile_id,
+            chunk_set_id=chunk_set_id,
+            lease_seconds=lease_seconds,
+        )
 
-        # Qdrant upsert 使用 chunk UUID 作为固定点 ID。
-        # 整批重试时会覆盖相同 ID，不会重复创建点。
-        # 任何一批失败都向上传播；调用方可安全地重试整个切块批次。
-        batch_size = self.vector_store.max_upsert_points
-        for start in range(0, len(points), batch_size):
-            batch = points[start : start + batch_size]
-            await self.vector_store.upsert(batch)
+        if attempt is None:
+            # claim() 返回 None 表示数据库中已记录为 indexed。
+            return VectorIndexResult(
+                profile_id=profile_id,
+                chunk_set_id=chunk_set_id,
+                point_count=len(points),
+                reused=True,
+            )
+
+        async def renew() -> None:
+            """每次外部写入前，确认本轮执行仍拥有有效租约。"""
+
+            await self.index_state.renew(
+                profile_id=profile_id,
+                chunk_set_id=chunk_set_id,
+                attempt=attempt,
+                lease_seconds=lease_seconds,
+            )
+
+        try:
+            await renew()
+
+            # 为单次外部操作设置短于租约的时间上限。
+            # 避免请求长时间挂起，而任务一直被认为正在正常执行。
+            async with asyncio.timeout(20):
+                await self.vector_store.initialize()
+
+            batch_size = self.vector_store.max_upsert_points
+
+            for start in range(0, len(points), batch_size):
+                # 旧任务失去租约时，在下一批写入前停止。
+                await renew()
+
+                async with asyncio.timeout(20):
+                    await self.vector_store.upsert(
+                        points[start: start + batch_size]
+                    )
+
+            # 完成网络写入后，再确认租约有效并留出收尾时间。
+            await renew()
+
+        except asyncio.CancelledError:
+            # 调用被取消时保留取消语义。
+            # 状态暂留 indexing，后续可在租约过期后重新领取。
+            raise
+
+        except Exception as error:
+            try:
+                await self.index_state.finish(
+                    profile_id=profile_id,
+                    chunk_set_id=chunk_set_id,
+                    attempt=attempt,
+                    succeeded=False,
+                )
+            except Exception:
+                # 数据库异常或租约失效，可能导致失败状态也无法保存。
+                # 保留原始执行错误，不让收尾错误把真正原因覆盖掉。
+                error.add_note(
+                    "Could not record index failure; "
+                    "inspect task state and lease"
+                )
+            raise
+
+        # 成功收尾放在上面的异常处理之外。
+        # 若提交成功状态时发生数据库异常，不能再盲目覆盖为 failed。
+        await self.index_state.finish(
+            profile_id=profile_id,
+            chunk_set_id=chunk_set_id,
+            attempt=attempt,
+            succeeded=True,
+            point_count=len(points),
+        )
 
         return VectorIndexResult(
             profile_id=profile_id,

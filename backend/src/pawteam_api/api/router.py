@@ -24,6 +24,16 @@ from pawteam_api.api.routes.knowledge_documents import (
 from pawteam_api.api.routes.knowledge_chunks import (
     router as knowledge_chunks_router,
 )
+from pawteam_api.api.routes.knowledge_indexes import (
+    router as knowledge_indexes_router,
+)
+
+from pawteam_api.api.routes.knowledge_embedding_profiles import (
+    router as knowledge_embedding_profiles_router,
+)
+from pawteam_api.api.routes.knowledge_embeddings import (
+    router as knowledge_embeddings_router,
+)
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router)
@@ -42,3 +52,6 @@ api_router.include_router(knowledge_router)
 api_router.include_router(agent_binding_router)
 api_router.include_router(knowledge_documents_router)
 api_router.include_router(knowledge_chunks_router)
+api_router.include_router(knowledge_indexes_router)
+api_router.include_router(knowledge_embedding_profiles_router)
+api_router.include_router(knowledge_embeddings_router)
