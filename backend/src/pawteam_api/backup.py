@@ -40,11 +40,12 @@ def create_backup(settings: Settings, output: Path) -> Path:
         _snapshot_sqlite(source_db, root / "app.db")
         _copy_optional_tree(settings.workspaces_dir, root / "workspaces")
         _copy_optional_tree(settings.secrets_dir, root / "secrets")
+        _copy_optional_tree(settings.data_dir / "knowledge-files", root / "knowledge-files")
         manifest = {
-            "format": 1,
+            "format": 2,
             "created_at": datetime.now(UTC).isoformat(),
             "app_version": settings.version,
-            "contents": ["app.db", "workspaces", "secrets"],
+            "contents": ["app.db", "workspaces", "secrets", "knowledge-files"],
             "note": "PAWTEAM_SECRET_KEY is external and is never stored here.",
         }
         (root / "manifest.json").write_text(
@@ -96,6 +97,9 @@ def restore_backup(settings: Settings, archive_path: Path, force: bool) -> Path:
         shutil.copy2(source_db, target_db)
         _replace_tree(restored / "workspaces", settings.workspaces_dir)
         _replace_tree(restored / "secrets", settings.secrets_dir)
+        # 兼容旧版归档；旧归档缺少源文件时不删除当前源文件目录。
+        if (restored / "knowledge-files").exists():
+            _replace_tree(restored / "knowledge-files", settings.data_dir / "knowledge-files")
 
     print(f"Restored backup format {manifest['format']}; safety copy: {safety_backup}")
     return safety_backup

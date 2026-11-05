@@ -110,6 +110,13 @@ export interface ChatDetail {
   runs: AgentRun[];
   tool_calls: ToolCall[];
   delegations: Delegation[];
+  knowledge_sources: Array<{
+    run_id: string; request_id: string; latency_ms: number;
+    sources: Array<{
+      citation: string; title: string; filename: string; version_number: number;
+      chunk_index: number; chunk_id: string; score: number;
+    }>;
+  }>;
 }
 
 export async function listChats(agentId?: string): Promise<ChatSession[]> {

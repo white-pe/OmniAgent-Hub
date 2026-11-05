@@ -244,6 +244,12 @@ export default function ChatPage() {
         setLiveOutput((current) => current + data.content);
       }
     });
+    source.addEventListener("knowledge.retrieved", () => {
+      setStreamState("知识检索完成，正在生成");
+      void getChat(selectedChatId).then(next => {
+        if (chatIdRef.current === selectedChatId) setDetail(next);
+      }).catch(() => {});
+    });
     source.addEventListener("tool.requested", (event) => {
       updateLiveTool(event, "requested");
     });
@@ -516,6 +522,16 @@ export default function ChatPage() {
                     <div className="markdown-content">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.content}</ReactMarkdown>
                     </div>
+                    {item.role === "assistant" && detail.knowledge_sources?.filter(
+                      evidence => evidence.run_id === item.run_id && evidence.sources.length > 0,
+                    ).map(evidence => <details className="message-evidence" key={evidence.request_id}>
+                      <summary>知识来源 · {evidence.sources.length} 条 · {evidence.latency_ms} ms</summary>
+                      {evidence.sources.map(source => <div key={source.chunk_id}>
+                        <Tag color="cyan">{source.citation}</Tag>
+                        <Text>{source.title} · v{source.version_number} · 片段 {source.chunk_index + 1}</Text>
+                        <Text copyable={{ text: source.chunk_id }} code>{source.chunk_id.slice(0, 8)}</Text>
+                      </div>)}
+                    </details>)}
                   </article>
                 ))
               )}

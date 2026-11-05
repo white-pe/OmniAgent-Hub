@@ -65,7 +65,7 @@ async def execute_embeddings(
             session_factory=request.app.state.session_factory,
             secret_store=request.app.state.secret_store,
             http_client=http_client,
-            batch_size=10,
+            batch_size=request.app.state.settings.knowledge_embedding_batch_size,
         )
 
         # UUID 路径参数先由 FastAPI 校验，再转成数据库使用的字符串。

@@ -25,6 +25,8 @@ from pawteam_api.knowledge.storage import LocalKnowledgeFileStore
 from pawteam_api.knowledge.parsers import KnowledgeTextParser
 from pawteam_api.knowledge.parsing import KnowledgeParsingService
 from pawteam_api.knowledge.chunk_service import KnowledgeChunkingService
+from pawteam_api.knowledge.jobs import KnowledgeJobManager
+from pawteam_api.knowledge.retrieval import KnowledgeRetrievalService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -57,6 +59,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             parser=KnowledgeTextParser(),
         )
         app.state.secret_store = SecretStore(resolved_settings)
+        app.state.knowledge_retrieval_service = KnowledgeRetrievalService(
+            session_factory=app.state.session_factory,
+            secret_store=app.state.secret_store, settings=resolved_settings,
+        )
+        app.state.knowledge_job_manager = KnowledgeJobManager(
+            session_factory=app.state.session_factory, settings=resolved_settings,
+            secret_store=app.state.secret_store,
+            parsing_service=app.state.knowledge_parsing_service,
+            chunking_service=app.state.knowledge_chunking_service,
+            retrieval_service=app.state.knowledge_retrieval_service,
+        )
         app.state.workspace_store = WorkspaceStore(resolved_settings)
         app.state.tool_registry = ToolRegistry(
             resolved_settings, app.state.workspace_store
@@ -90,14 +103,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.provider_client_factory(base_url, api_key, timeout)
             ),
             channel_dispatcher=app.state.channel_dispatcher,
+            knowledge_retrieval_service=app.state.knowledge_retrieval_service,
         )
         app.state.wecom_bot_manager.bind_runtime(
             app.state.run_manager, app.state.channel_dispatcher
         )
         await app.state.run_manager.recover_interrupted_runs()
+        await app.state.knowledge_job_manager.recover()
         await app.state.wecom_bot_manager.start_all()
         await app.state.channel_dispatcher.recover_pending()
         yield
+        await app.state.knowledge_job_manager.shutdown()
         await app.state.run_manager.shutdown()
         await app.state.channel_dispatcher.shutdown()
         await app.state.wecom_bot_manager.shutdown()

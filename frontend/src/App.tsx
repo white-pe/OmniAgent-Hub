@@ -1,6 +1,7 @@
-import { Button, ConfigProvider, Grid, Layout, Menu, Skeleton, Tag, Typography, message } from "antd";
+import { Button, ConfigProvider, Grid, Layout, Menu, Skeleton, Tag, Tooltip, Typography, message } from "antd";
 import {
   Activity,
+  BookOpen,
   Bot,
   Boxes,
   Cable,
@@ -15,6 +16,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import zhCN from "antd/locale/zh_CN";
 
 import { logout } from "./api/auth";
+import { fetchHealth } from "./api/health";
 import "./styles.css";
 
 const OverviewPage = lazy(() => import("./pages/OverviewPage"));
@@ -24,6 +26,7 @@ const TeamsPage = lazy(() => import("./pages/TeamsPage"));
 const ChannelsPage = lazy(() => import("./pages/ChannelsPage"));
 const ProvidersPage = lazy(() => import("./pages/ProvidersPage"));
 const SystemHealth = lazy(() => import("./pages/SystemHealth"));
+const KnowledgePage = lazy(() => import("./pages/KnowledgePage"));
 
 const { Content, Header, Sider } = Layout;
 const { Text, Title } = Typography;
@@ -42,6 +45,13 @@ const pages = [
     description: "跨网页与企业微信查看会话和执行审计",
     icon: <MessageSquareText size={18} />,
     content: ChatPage,
+  },
+  {
+    key: "knowledge",
+    label: "知识工作台",
+    description: "知识资源",
+    icon: <BookOpen size={18} />,
+    content: KnowledgePage,
   },
   {
     key: "agents",
@@ -83,7 +93,9 @@ const pages = [
 export default function App() {
   const screens = Grid.useBreakpoint();
   const compact = screens.lg === false;
+  const phone = screens.md === false;
   const [collapsed, setCollapsed] = useState(compact);
+  const [environment, setEnvironment] = useState("");
   const [pageKey, setPageKey] = useState(() => {
     return window.localStorage.getItem("pawteam_active_page") ?? "overview";
   });
@@ -96,6 +108,9 @@ export default function App() {
   useEffect(() => {
     if (compact) setCollapsed(true);
   }, [compact]);
+  useEffect(() => {
+    void fetchHealth().then(health => setEnvironment(health.environment)).catch(() => {});
+  }, []);
 
   function selectPage(key: string) {
     setPageKey(key);
@@ -130,9 +145,9 @@ export default function App() {
     >
       <Layout className="app-layout">
         <Sider
-          className="app-sider"
+          className={phone ? "app-sider mobile-sider" : "app-sider"}
           width={232}
-          collapsedWidth={72}
+          collapsedWidth={phone ? 0 : 72}
           collapsed={collapsed}
           trigger={null}
           theme="light"
@@ -162,15 +177,17 @@ export default function App() {
             </Button>
           </div>
         </Sider>
+        {phone && !collapsed && <button className="mobile-nav-mask" aria-label="关闭导航" onClick={() => setCollapsed(true)} />}
 
         <Layout>
           <Header className="app-header">
+            {phone && <Tooltip title="导航"><Button type="text" aria-label="展开导航" icon={<PanelLeftOpen size={18} />} onClick={() => setCollapsed(value => !value)} /></Tooltip>}
             <div className="page-heading">
               <Title level={4}>{page.label}</Title>
               <Text type="secondary">{page.description}</Text>
             </div>
             <div className="header-actions">
-              <Tag color="success">本地运行</Tag>
+              <Tag>{environment === "production" ? "生产环境" : environment || "连接中"}</Tag>
               <Button icon={<LogOut size={16} />} onClick={handleLogout}>
                 退出
               </Button>

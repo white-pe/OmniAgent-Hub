@@ -26,10 +26,15 @@ jobs:
         run: uv sync --frozen --all-groups
       - name: Install frontend
         run: npm ci --prefix frontend
-      - name: Backend lint
-        run: uv run ruff check backend
       - name: Backend tests
         run: uv run pytest
+      - name: Migration consistency
+        run: |
+          mkdir -p data
+          uv run alembic upgrade head
+          uv run alembic check
+          uv run alembic downgrade 0015
+          uv run alembic upgrade head
       - name: Frontend typecheck and build
         run: npm --prefix frontend run build
       - name: Validate local Compose

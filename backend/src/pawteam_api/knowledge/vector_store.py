@@ -172,6 +172,7 @@ class QdrantVectorStore:
         vector: list[float],
         allowed_knowledge_base_ids: list[str],
         limit: int = 10,
+        allowed_chunk_set_ids: list[str] | None = None,
     ) -> list[VectorSearchHit]:
         """在明确允许的知识库范围内搜索，空范围不执行查询。"""
 
@@ -190,6 +191,19 @@ class QdrantVectorStore:
         # 不能省略过滤条件后变成整个集合搜索。
         if not allowed:
             return []
+        # 发布过滤在召回前执行，避免旧版本占满 top-k 后才被应用丢弃。
+        chunk_filter = []
+        if allowed_chunk_set_ids is not None:
+            if not allowed_chunk_set_ids:
+                return []
+            chunk_filter = [
+                models.FieldCondition(
+                    key="chunk_set_id",
+                    match=models.MatchAny(
+                        any=sorted({str(UUID(value)) for value in allowed_chunk_set_ids})
+                    ),
+                )
+            ]
 
         validated = EmbeddingBatch(
             dimensions=self.dimensions,
@@ -203,6 +217,7 @@ class QdrantVectorStore:
             query=validated.vectors[0],
             query_filter=models.Filter(
                 must=[
+                    *chunk_filter,
                     models.FieldCondition(
                         key="profile_id",
                         match=models.MatchValue(
@@ -236,6 +251,10 @@ class QdrantVectorStore:
                 or str(metadata.knowledge_base_id) not in allowed
                 or str(point.id) != str(metadata.chunk_id)
                 or not isfinite(point.score)
+                or (
+                    allowed_chunk_set_ids is not None
+                    and str(metadata.chunk_set_id) not in allowed_chunk_set_ids
+                )
             ):
                 raise RuntimeError("Search result failed consistency checks")
 
@@ -247,6 +266,24 @@ class QdrantVectorStore:
             )
 
         return hits
+
+    async def count_chunk_set(self, chunk_set_id: str) -> int:
+        """核对远端真实点数，避免只相信数据库中的历史完成状态。"""
+
+        await self._check_collection()
+        result = await self.client.count(
+            collection_name=self.collection_name,
+            count_filter=models.Filter(must=[
+                models.FieldCondition(
+                    key="profile_id", match=models.MatchValue(value=str(self.profile_id))
+                ),
+                models.FieldCondition(
+                    key="chunk_set_id", match=models.MatchValue(value=str(UUID(chunk_set_id)))
+                ),
+            ]),
+            exact=True,
+        )
+        return result.count
 
     async def delete_document(
         self,

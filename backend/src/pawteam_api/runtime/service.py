@@ -26,6 +26,7 @@ from pawteam_api.models import (
     ExternalConversation,
     Message,
     ProviderModel,
+    RunEvent,
     Team,
     ToolCall,
 )
@@ -207,6 +208,17 @@ class ChatService:
                 await self._delegation_response(delegation)
                 for delegation in delegations
             ],
+            knowledge_sources=[
+                {"run_id": event.run_id, **event.data_json}
+                for event in (
+                    await self.session.scalars(
+                        select(RunEvent).where(
+                            RunEvent.run_id.in_(run_ids),
+                            RunEvent.event_type == "knowledge.retrieved",
+                        ).order_by(RunEvent.created_at)
+                    )
+                ).all()
+            ] if run_ids else [],
         )
 
     async def _delegation_response(self, delegation: Delegation) -> DelegationResponse:

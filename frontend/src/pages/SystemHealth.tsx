@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button, Card, Space, Spin, Tag, Typography } from "antd";
 
 import { fetchHealth, type HealthResponse } from "../api/health";
+import { knowledgeApi, type RagStatus } from "../api/knowledge";
 
 const { Paragraph, Text } = Typography;
 
@@ -9,12 +10,15 @@ export default function SystemHealth() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [knowledge, setKnowledge] = useState<RagStatus>();
 
   const loadHealth = async () => {
     setLoading(true);
     setError(null);
     try {
-      setHealth(await fetchHealth());
+      const [nextHealth, nextKnowledge] = await Promise.all([fetchHealth(), knowledgeApi.status()]);
+      setHealth(nextHealth);
+      setKnowledge(nextKnowledge);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "未知错误");
     } finally {
@@ -41,17 +45,12 @@ export default function SystemHealth() {
           <div className="status-grid">
             <Status label="服务" value={health?.status ?? "degraded"} />
             <Status label="数据库" value={health?.database ?? "unavailable"} />
+            <Status label="Qdrant" value={knowledge?.qdrant ?? "unavailable"} />
             <Status label="环境" value={health?.environment ?? "unknown"} neutral />
             <Status label="版本" value={health?.version ?? "unknown"} neutral />
           </div>
         )}
       </Card>
-      <section className="flow">
-        <Text strong>阶段 0 请求链路</Text>
-        <Paragraph>
-          React → Vite Proxy → FastAPI Router → SQLAlchemy AsyncEngine → SQLite
-        </Paragraph>
-      </section>
     </Space>
   );
 }

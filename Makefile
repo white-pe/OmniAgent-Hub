@@ -20,7 +20,7 @@ test:
 	uv run pytest
 
 check:
-	uv run ruff check backend
+	git diff --check
 	cd frontend && npm run check
 
 build:

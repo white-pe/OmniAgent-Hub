@@ -34,6 +34,7 @@ from pawteam_api.api.routes.knowledge_embedding_profiles import (
 from pawteam_api.api.routes.knowledge_embeddings import (
     router as knowledge_embeddings_router,
 )
+from pawteam_api.api.routes.knowledge_rag import router as knowledge_rag_router
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router)
@@ -55,3 +56,4 @@ api_router.include_router(knowledge_chunks_router)
 api_router.include_router(knowledge_indexes_router)
 api_router.include_router(knowledge_embedding_profiles_router)
 api_router.include_router(knowledge_embeddings_router)
+api_router.include_router(knowledge_rag_router)

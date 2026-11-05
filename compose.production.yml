@@ -17,11 +17,15 @@ services:
       PAWTEAM_SECRET_KEY: ${PAWTEAM_SECRET_KEY:?set PAWTEAM_SECRET_KEY}
       PAWTEAM_ALLOWED_HOSTS: '["${PAWTEAM_DOMAIN:?set PAWTEAM_DOMAIN}","localhost"]'
       PAWTEAM_CORS_ORIGINS: '[]'
+      PAWTEAM_QDRANT_URL: http://qdrant:6333
+      PAWTEAM_QDRANT_API_KEY: ${PAWTEAM_QDRANT_API_KEY:?set PAWTEAM_QDRANT_API_KEY}
     volumes:
       - pawteam-data:/app/data
       - ./backups:/app/backups
     expose:
       - "8000"
+    depends_on:
+      - qdrant
     healthcheck:
       test:
         - CMD
@@ -32,6 +36,15 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+
+  qdrant:
+    image: qdrant/qdrant:v1.20.0
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__API_KEY: ${PAWTEAM_QDRANT_API_KEY:?set PAWTEAM_QDRANT_API_KEY}
+    # 生产只在 Compose 内网访问，不发布宿主机端口。
+    volumes:
+      - qdrant-data:/qdrant/storage
 
   frontend:
     build:
@@ -70,3 +83,4 @@ volumes:
   pawteam-data:
   caddy-data:
   caddy-config:
+  qdrant-data:

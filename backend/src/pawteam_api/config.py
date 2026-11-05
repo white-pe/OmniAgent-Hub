@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     # 本地 Python 开发通过已绑定到回环地址的端口访问 Qdrant。
     # Compose 中运行的后端会用服务名 qdrant 覆盖这个默认值。
     qdrant_url: str = "http://127.0.0.1:6333"
+    qdrant_api_key: SecretStr | None = None
+    knowledge_embedding_batch_size: int = Field(default=10, ge=1, le=64)
+    knowledge_job_concurrency: int = Field(default=1, ge=1, le=4)
+    knowledge_job_timeout_seconds: int = Field(default=1800, ge=30, le=7200)
+    knowledge_context_chars: int = Field(default=16_000, ge=1000, le=40_000)
+    knowledge_query_timeout_seconds: int = Field(default=120, ge=10, le=300)
 
     knowledge_max_upload_bytes: int = Field(
         default=20 * 1024 * 1024,

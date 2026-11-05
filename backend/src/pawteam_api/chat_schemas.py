@@ -104,3 +104,4 @@ class ChatDetailResponse(BaseModel):
     runs: list[RunResponse]
     tool_calls: list[ToolCallResponse]
     delegations: list[DelegationResponse]
+    knowledge_sources: list[dict[str, object]] = Field(default_factory=list)

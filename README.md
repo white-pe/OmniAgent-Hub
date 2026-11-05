@@ -1,6 +1,7 @@
 # OmniAgent
 
-OmniAgent 是一个教学型、本地优先的多 Agent 平台。当前已完成 **阶段 9：产品化工作台与面试表达层**，项目重点转向本地完善、完整复盘与面试演示。
+OmniAgent 是一个教学型、本地优先的多 Agent 与 RAG 平台，支持知识库文档处理、发布、权限检索、引用问答以及 Agent 自动检索。
+当前部署边界是一名管理员、一台服务器、一个后端进程；上线前按评测方案完成真实模型质量、压力和恢复验收。
 
 项目工作目录为 `/Users/whitexp/code/AgentProject/OmniAgent-Hub`，后续开发、运行和验证均在此目录执行。
 
@@ -20,6 +21,10 @@ OmniAgent 是一个教学型、本地优先的多 Agent 平台。当前已完成
 - 阶段 7.2：网页与企业微信统一会话列表、来源元数据、自动刷新和外部会话只读审计；
 - 阶段 8：单管理员登录、CSRF、生产配置校验、Caddy HTTPS、健康检查、备份恢复与 CI；
 - 阶段 9：产品化工作台、系统总览、统一会话检索、页面级代码分割和安全 Markdown 渲染；
+- RAG：TXT / Markdown 不可变源文件、解析、切块、Embedding 配置与完整向量持久化；
+- RAG：Qdrant 索引、后台处理任务、发布切换、Agent 知识库授权、检索及引用回答；
+- RAG：知识工作台、任务取消/重试/重建、来源审计、评测脚本和备份恢复；
+- RAG：每次工作台与 Agent 查询均持久化问题、回答和来源快照，可分页回看；
 - `AGENTS.md / SOUL.md / PROFILE.md / MEMORY.md` 可视化编辑；
 - Agent 启停、协调 Agent 标记和配置版本控制；
 - 数据库与文件操作的补偿事务；
@@ -42,6 +47,7 @@ cd /Users/whitexp/code/AgentProject/OmniAgent-Hub
 cp .env.example .env
 make setup
 make migrate
+docker compose up -d qdrant
 ```
 
 打开两个终端：
@@ -73,7 +79,7 @@ uv run alembic upgrade head
 uv run alembic current
 ```
 
-预期数据库版本为 `0008 (head)`。然后由你手动运行 `Backend API` 和 `Frontend Dev`。
+预期数据库版本为 `0017 (head)`。然后运行 `Backend API` 和 `Frontend Dev`。
 
 在“Blueprint 与 Agent”页输入至少 10 个字符的用途描述，选择生成模型。生成只会保存草案；检查并编辑预览后点击“确认并创建 Agent”，才会创建数据库记录和 Workspace。点击取消不会创建 Agent。
 
@@ -148,3 +154,20 @@ make prod-up
 - [阶段 9：产品化工作台与面试表达层](docs/stage-9-product-console.zh.md)
 - [完整学习与面试复盘路线](docs/project-learning-roadmap.zh.md)
 - [Git 阶段复盘](docs/git-stage-workflow.zh.md)
+- [RAG 核心代码解读与复核指南](docs/rag-core-code-walkthrough.zh.md)
+- [RAG 上线前整体评测与测试方案](docs/rag-release-evaluation-plan.zh.md)
+- [RAG 本次交付与实际验证记录](docs/rag-delivery-verification.zh.md)
+
+## 知识工作台
+
+先在 Provider 页面配置 OpenAI 兼容的 Embedding 服务，再在知识工作台创建向量配置。
+配置模型名、维度和是否发送 dimensions，批次条数通过
+`PAWTEAM_KNOWLEDGE_EMBEDDING_BATCH_SIZE` 设置，默认 10。
+
+上传 TXT/Markdown 后选择版本和向量配置，提交“处理并发布”任务。
+任务持久化执行解析、切块、向量化、索引，全部成功后切换发布来源。
+历史上已完成索引的文档不会自动发布，需要在文档抽屉确认批次及配置后发布。
+
+“检索与问答”可查看片段正文、相似度和引用来源；问答额外选择聊天模型。
+Agent 绑定知识库后，网页和 Channel Run 自动按该 Agent 的启用绑定检索。
+目前没有 PDF/OCR、多租户权限、混合检索或分布式 Worker；不要启动多个后端 worker。

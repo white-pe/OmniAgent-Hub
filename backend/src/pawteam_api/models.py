@@ -997,6 +997,105 @@ class KnowledgeChunkEmbedding(Base):
     )
 
 
+class KnowledgePublication(Base):
+    """每个文档只发布一个批次，切换配置或版本时原子替换指针。"""
+
+    __tablename__ = "knowledge_publications"
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"), primary_key=True
+    )
+    chunk_set_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_chunk_sets.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    profile_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_embedding_profiles.id", ondelete="RESTRICT"),
+        nullable=False, index=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class KnowledgeIngestionJob(Base):
+    """单机任务队列；进程重启后失败任务可人工重试，不静默丢失。"""
+
+    __tablename__ = "knowledge_ingestion_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','running','completed','failed','cancelled')",
+            name="ck_knowledge_job_status",
+        ),
+        Index("ix_knowledge_jobs_status_created", "status", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"), nullable=False
+    )
+    version_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_document_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    profile_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_embedding_profiles.id", ondelete="RESTRICT"), nullable=False
+    )
+    # 相同文档同时只处理一个任务；终态置空，允许后续再次提交。
+    active_key: Mapped[str | None] = mapped_column(String(36), unique=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued", nullable=False)
+    stage: Mapped[str] = mapped_column(String(30), default="queued", nullable=False)
+    chunk_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_overlap: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_set_id: Mapped[str | None] = mapped_column(String(36))
+    rebuild: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class KnowledgeQueryLog(Base):
+    """只记录问题摘要、关联 ID 与耗时，不持久化原始问题和模型密钥。"""
+
+    __tablename__ = "knowledge_query_logs"
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    operation: Mapped[str] = mapped_column(String(20), nullable=False)
+    query_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    agent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    hit_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    details_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+
+class KnowledgeQueryHistory(Base):
+    """管理员可回看的逐次查询快照；与不保存正文的审计摘要分表。"""
+
+    __tablename__ = "knowledge_query_history"
+    request_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_query_logs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    response_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+
 class KnowledgeVectorIndex(Base):
     """一个切块批次在指定 Embedding Profile 下的索引状态。"""
 

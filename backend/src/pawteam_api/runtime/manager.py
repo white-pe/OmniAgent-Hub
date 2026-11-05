@@ -114,6 +114,7 @@ class RunManager:
         tool_registry: ToolRegistry,
         provider_client_factory: ProviderClientFactory,
         channel_dispatcher: ChannelDeliveryDispatcher | None = None,
+        knowledge_retrieval_service=None,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings
@@ -122,6 +123,7 @@ class RunManager:
         self.tool_registry = tool_registry
         self.provider_client_factory = provider_client_factory
         self.channel_dispatcher = channel_dispatcher
+        self.knowledge_retrieval_service = knowledge_retrieval_service
         self.prompt_builder = PromptBuilder(settings, workspace_store)
         self.tasks: dict[str, asyncio.Task[None]] = {}
 
@@ -383,7 +385,7 @@ class RunManager:
             tool_definitions = self.tool_registry.openai_definitions(enabled_tools)
             if delegation_teams:
                 tool_definitions.append(delegation_tool_definition(delegation_teams))
-            return PreparedRun(
+            prepared = PreparedRun(
                 client=client,
                 model_name=runtime.model_name,
                 messages=[dict(message) for message in messages],
@@ -394,6 +396,33 @@ class RunManager:
                 tool_definitions=tool_definitions,
                 delegation_teams=delegation_teams,
             )
+        # Session 已关闭后再调用模型和向量库。子 Run 使用子 Agent 的绑定，
+        # 不继承协调者授权；网页和 Channel 共用这条执行链路。
+        if self.knowledge_retrieval_service is not None:
+            from pawteam_api.knowledge.rag_schemas import RetrievalRequest
+            question = next((
+                str(item.get("content", ""))
+                for item in reversed(prepared.messages) if item.get("role") == "user"
+            ), "")
+            if question.strip():
+                async with asyncio.timeout(self.settings.knowledge_query_timeout_seconds):
+                    retrieved = await self.knowledge_retrieval_service.search(
+                        RetrievalRequest(agent_id=prepared.agent_id, query=question[:4000])
+                    )
+                if retrieved.hits:
+                    prepared.messages.insert(1, {
+                        "role": "system",
+                        "content": self.knowledge_retrieval_service.context(retrieved.hits),
+                    })
+                async with self.session_factory.begin() as session:
+                    await self._add_event(session, run_id, "knowledge.retrieved", {
+                        "request_id": retrieved.request_id,
+                        "latency_ms": retrieved.latency_ms,
+                        "sources": [
+                            hit.model_dump(exclude={"text"}) for hit in retrieved.hits
+                        ],
+                    })
+        return prepared
 
     async def _execute_tool(
         self,

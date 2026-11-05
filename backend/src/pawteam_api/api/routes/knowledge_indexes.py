@@ -143,6 +143,10 @@ async def execute_index(
     client = AsyncQdrantClient(
         url=request.app.state.settings.qdrant_url,
         timeout=10,
+        api_key=(
+            request.app.state.settings.qdrant_api_key.get_secret_value()
+            if request.app.state.settings.qdrant_api_key else None
+        ),
     )
 
     try:

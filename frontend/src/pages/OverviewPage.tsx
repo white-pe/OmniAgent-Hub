@@ -5,6 +5,7 @@ import {
   Boxes,
   Cable,
   CheckCircle2,
+  BookOpen,
   MessageSquareText,
   Network,
   RefreshCw,
@@ -17,6 +18,7 @@ import { listChats, type ChatSession } from "../api/chats";
 import { fetchHealth, type HealthResponse } from "../api/health";
 import { listProviders, type Provider } from "../api/providers";
 import { listTeams, type Team } from "../api/teams";
+import { knowledgeApi, type RagStatus } from "../api/knowledge";
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -27,6 +29,7 @@ interface Snapshot {
   health: HealthResponse;
   providers: Provider[];
   teams: Team[];
+  knowledge: RagStatus;
 }
 
 export default function OverviewPage() {
@@ -36,15 +39,16 @@ export default function OverviewPage() {
   async function refresh() {
     setLoading(true);
     try {
-      const [agents, channels, chats, health, providers, teams] = await Promise.all([
+      const [agents, channels, chats, health, providers, teams, knowledge] = await Promise.all([
         listAgents(),
         listChannels(),
         listChats(),
         fetchHealth(),
         listProviders(),
         listTeams(),
+        knowledgeApi.status(),
       ]);
-      setSnapshot({ agents, channels, chats, health, providers, teams });
+      setSnapshot({ agents, channels, chats, health, providers, teams, knowledge });
     } catch (reason) {
       void message.error(reason instanceof Error ? reason.message : "总览数据加载失败");
     } finally {
@@ -82,10 +86,7 @@ export default function OverviewPage() {
     <div className="overview-page">
       <section className="overview-toolbar">
         <div>
-          <Title level={3}>项目运行总览</Title>
-          <Paragraph type="secondary">
-            从模型接入到多 Agent 协作，再到跨 Channel 会话，所有核心资源都汇总在这里。
-          </Paragraph>
+          <Title level={3}>运行总览</Title>
         </div>
         <Button icon={<RefreshCw size={16} />} loading={loading} onClick={() => void refresh()}>
           刷新状态
@@ -98,13 +99,13 @@ export default function OverviewPage() {
         <Metric icon={<Network />} label="Team" value={snapshot.teams.length} detail={`${activeTeams} 个可委派`} />
         <Metric icon={<Cable />} label="Channel" value={snapshot.channels.length} detail={`${connectedChannels} 个已连接`} />
         <Metric icon={<MessageSquareText />} label="会话" value={snapshot.chats.length} detail={`${snapshot.chats.filter((item) => item.channel !== "console").length} 个来自外部`} />
+        <Metric icon={<BookOpen />} label="知识库" value={snapshot.knowledge.knowledge_bases} detail={`${snapshot.knowledge.publications} 份文档已发布`} />
       </section>
 
       <section className="overview-grid">
         <div className="overview-section">
           <div className="section-heading">
             <Title level={5}>核心业务链路</Title>
-            <Text type="secondary">创建和运行 Agent 时，资源按下面的顺序组合</Text>
           </div>
           <div className="architecture-flow">
             <FlowNode title="Provider" detail="模型协议与加密密钥" ready={activeProviders > 0} />
@@ -127,6 +128,7 @@ export default function OverviewPage() {
           <Readiness label="数据库" ready={snapshot.health.database === "ok"} detail={snapshot.health.database} />
           <Readiness label="模型调用" ready={activeProviders > 0} detail={activeProviders ? `${activeProviders} 个 Provider 可用` : "尚未配置"} />
           <Readiness label="Agent 对话" ready={activeAgents > 0} detail={activeAgents ? `${activeAgents} 个 Agent 已启用` : "尚未创建"} />
+          <Readiness label="知识检索" ready={snapshot.knowledge.qdrant === "ok"} detail={snapshot.knowledge.qdrant === "ok" ? `${snapshot.knowledge.publications} 份已发布文档` : "Qdrant 不可用"} />
           <Readiness label="团队委派" ready={activeTeams > 0} detail={activeTeams ? `${activeTeams} 个 Team 可用` : "可选能力"} optional />
           <Readiness label="外部 Channel" ready={connectedChannels > 0} detail={connectedChannels ? `${connectedChannels} 个长连接在线` : "可选能力"} optional />
         </div>
