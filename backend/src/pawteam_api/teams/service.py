@@ -1,5 +1,7 @@
 """CRUD for coordinator-owned Team membership allowlists."""
 
+from __future__ import annotations
+
 from uuid import uuid4
 
 from sqlalchemy import delete, select
