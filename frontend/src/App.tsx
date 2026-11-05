@@ -132,14 +132,23 @@ export default function App() {
       locale={zhCN}
       theme={{
         token: {
-          colorPrimary: "#2563eb",
+          colorPrimary: "#087f8c",
+          colorSuccess: "#32836f",
           borderRadius: 6,
-          colorBgLayout: "#f4f6f8",
-          colorText: "#172033",
+          colorBgLayout: "#f2f7f6",
+          colorText: "#18353b",
+          colorBorder: "#dce8e5",
+          colorLink: "#087f8c",
         },
         components: {
-          Card: { headerBg: "transparent" },
-          Menu: { itemBorderRadius: 6 },
+          Card: { headerBg: "transparent", colorBorderSecondary: "#e0ebe8" },
+          Menu: {
+            itemBorderRadius: 6,
+            itemSelectedBg: "#e5f3f0",
+            itemSelectedColor: "#087f8c",
+            itemHoverBg: "#f0f7f5",
+          },
+          Button: { controlHeight: 36 },
         },
       }}
     >
@@ -187,7 +196,9 @@ export default function App() {
               <Text type="secondary">{page.description}</Text>
             </div>
             <div className="header-actions">
-              <Tag>{environment === "production" ? "生产环境" : environment || "连接中"}</Tag>
+              <Tag color={environment === "production" ? "cyan" : "default"}>
+                {environment === "production" ? "生产环境" : environment || "连接中"}
+              </Tag>
               <Button icon={<LogOut size={16} />} onClick={handleLogout}>
                 退出
               </Button>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Alert,
   Button,
@@ -11,6 +11,7 @@ import {
   Modal,
   Popconfirm,
   Select,
+  Segmented,
   Space,
   Switch,
   Tabs,
@@ -18,6 +19,15 @@ import {
   Typography,
   message,
 } from "antd";
+
+import {
+  Activity,
+  Bot,
+  Cpu,
+  FolderKanban,
+  Plus,
+  Sparkles,
+} from "lucide-react";
 
 import {
   createAgent,
@@ -58,6 +68,7 @@ export default function AgentsPage() {
   const [workspaceFile, setWorkspaceFile] = useState<WorkspaceFile | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
+  const [creationMode, setCreationMode] = useState<"blueprint" | "manual">("blueprint");
   const [activeFilename, setActiveFilename] =
     useState<WorkspaceFilename>("AGENTS.md");
   const [createForm] = Form.useForm<AgentFormValues>();
@@ -194,6 +205,19 @@ export default function AgentsPage() {
 
   return (
     <div className="agent-layout">
+      <section className="agent-page-heading">
+        <div>
+          <Text className="eyebrow">AGENT STUDIO / CONFIGURATION</Text>
+          <Typography.Title level={3}>Agent 管理</Typography.Title>
+          <Text type="secondary">创建专属角色，绑定模型，并管理独立工作空间与运行能力。</Text>
+        </div>
+        <div className="agent-overview-counts">
+          <ResourceBadge icon={<Bot />} label="Agent" value={agents.length} />
+          <ResourceBadge icon={<Activity />} label="运行中" value={agents.filter((agent) => agent.status === "active").length} />
+          <ResourceBadge icon={<Cpu />} label="可用模型" value={enabledProviders.reduce((count, provider) => count + provider.models.filter((model) => model.enabled).length, 0)} />
+        </div>
+      </section>
+
       {!enabledProviders.length && (
         <Alert
           type="warning"
@@ -202,24 +226,80 @@ export default function AgentsPage() {
         />
       )}
 
-      <BlueprintCreator providers={enabledProviders} onCreated={refresh} />
+      <section className="agent-creation-section">
+        <div className="section-title-row">
+          <div>
+            <Typography.Title level={4}>创建 Agent</Typography.Title>
+            <Text type="secondary">选择创建流程。AI 创建会先生成完整角色草案；手动创建仅建立基础 Agent。</Text>
+          </div>
+          <Segmented
+            value={creationMode}
+            onChange={(value) => setCreationMode(value as "blueprint" | "manual")}
+            options={[
+              {
+                value: "blueprint",
+                label: <span className="agent-mode-option"><Sparkles size={15} /> AI 生成角色蓝图</span>,
+              },
+              {
+                value: "manual",
+                label: <span className="agent-mode-option"><Plus size={15} /> 手动创建空白 Agent</span>,
+              },
+            ]}
+          />
+        </div>
+        <div className="agent-creation-workspace">
+          {creationMode === "blueprint" ? (
+            <div className="agent-blueprint-workspace">
+              <div className="agent-mode-summary">
+                <span className="creation-path-icon"><Sparkles size={18} /></span>
+                <div>
+                  <Text strong>从职责描述生成专用角色</Text>
+                  <Text type="secondary">
+                    AI 会生成身份、目标、规则和能力请求。你可以在确认前编辑草案；此流程需要可用的聊天模型。
+                  </Text>
+                </div>
+                <Tag color="cyan">生成后审核</Tag>
+              </div>
+            <BlueprintCreator providers={enabledProviders} onCreated={refresh} />
+            </div>
+          ) : (
+            <div className="agent-manual-workspace">
+              <div className="agent-mode-summary">
+                <span className="creation-path-icon manual"><Plus size={18} /></span>
+                <div>
+                  <Text strong>创建空白 Agent</Text>
+                  <Text type="secondary">
+                    只设置名称、用途和运行模型，不生成角色指令。创建后再编辑 Workspace、Skills 与 Tools。
+                  </Text>
+                </div>
+                <Tag>基础配置</Tag>
+              </div>
+              <div className="agent-form-card">
+              <AgentForm
+                form={createForm}
+                providers={enabledProviders}
+                models={createModels}
+                onProviderChange={() => createForm.setFieldValue("model_id", undefined)}
+                onFinish={create}
+                saving={saving}
+                submitText="创建 Agent 与 Workspace"
+              />
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
 
-      <Card title="手动创建 Agent" className="agent-form-card">
-        <Paragraph type="secondary">
-          保留阶段 2 的确定性入口，便于对比“手动表单”和“Blueprint 两阶段创建”两条业务链路。
-        </Paragraph>
-        <AgentForm
-          form={createForm}
-          providers={enabledProviders}
-          models={createModels}
-          onProviderChange={() => createForm.setFieldValue("model_id", undefined)}
-          onFinish={create}
-          saving={saving}
-          submitText="创建 Agent 与 Workspace"
-        />
-      </Card>
-
-      <Card title={`Agent 列表（${agents.length}）`} loading={loading}>
+      <section className="agent-list-section">
+      <div className="section-title-row">
+        <div>
+          <Typography.Title level={4}>已创建的 Agent</Typography.Title>
+          <Text type="secondary">模型绑定、Workspace 与运行能力</Text>
+        </div>
+        <Tag>{agents.length} 个</Tag>
+      </div>
+      <div className="agent-list-shell">
+        {loading && <Card loading />}
         {!agents.length && !loading ? (
           <Empty description="还没有 Agent" />
         ) : (
@@ -231,13 +311,18 @@ export default function AgentsPage() {
                 <Card
                   className="agent-card"
                   title={
-                    <Space wrap>
-                      <Text strong>{agent.name}</Text>
-                      <Tag color={agent.status === "active" ? "success" : "default"}>
-                        {agent.status === "active" ? "运行中" : "已停用"}
-                      </Tag>
-                      {agent.is_coordinator && <Tag color="purple">协调 Agent</Tag>}
-                    </Space>
+                    <div className="agent-card-title">
+                      <span className="agent-avatar"><Bot size={18} /></span>
+                      <div>
+                        <Text strong>{agent.name}</Text>
+                        <Space size={6} wrap>
+                          <Tag color={agent.status === "active" ? "success" : "default"}>
+                            {agent.status === "active" ? "运行中" : "已停用"}
+                          </Tag>
+                          {agent.is_coordinator && <Tag color="cyan">协调 Agent</Tag>}
+                        </Space>
+                      </div>
+                    </div>
                   }
                   extra={
                     <Switch
@@ -246,11 +331,11 @@ export default function AgentsPage() {
                     />
                   }
                 >
-                  <Paragraph>{agent.description || "暂无用途说明"}</Paragraph>
+                  <Paragraph className="agent-card-description">{agent.description || "暂无用途说明"}</Paragraph>
                   <div className="agent-meta">
-                    <Text type="secondary">模型</Text>
+                    <Text type="secondary"><Cpu size={14} /> 模型</Text>
                     <Text>{agent.provider_name} / {agent.model_name}</Text>
-                    <Text type="secondary">Workspace</Text>
+                    <Text type="secondary"><FolderKanban size={14} /> Workspace</Text>
                     <Text code copyable>{agent.workspace_path}</Text>
                     <Text type="secondary">配置版本</Text>
                     <Text>v{agent.version}</Text>
@@ -275,7 +360,8 @@ export default function AgentsPage() {
             )}
           />
         )}
-      </Card>
+      </div>
+      </section>
 
       <Modal
         title={`编辑 ${editing?.name ?? "Agent"}`}
@@ -349,6 +435,15 @@ export default function AgentsPage() {
   );
 }
 
+function ResourceBadge({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
+  return (
+    <div className="resource-badge">
+      <span>{icon}</span>
+      <div><Text type="secondary">{label}</Text><Text strong>{value}</Text></div>
+    </div>
+  );
+}
+
 function AgentForm({
   form,
   providers,
@@ -390,13 +485,15 @@ function AgentForm({
       <Form.Item name="model_id" label="Model" rules={[{ required: true }]}>
         <Select options={models} disabled={!models.length} />
       </Form.Item>
-      <Form.Item name="is_coordinator" valuePropName="checked">
+      <Form.Item name="is_coordinator" valuePropName="checked" className="agent-coordinator-field">
         <Checkbox>作为协调 Agent（可在 Team 中获得受控委派能力）</Checkbox>
       </Form.Item>
       {!hideSubmit && (
-        <Button type="primary" htmlType="submit" loading={saving} disabled={!providers.length}>
-          {submitText}
-        </Button>
+        <div className="agent-create-submit">
+          <Button type="primary" htmlType="submit" loading={saving} disabled={!providers.length}>
+            {submitText}
+          </Button>
+        </div>
       )}
     </Form>
   );

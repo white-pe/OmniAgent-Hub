@@ -231,7 +231,6 @@ class KnowledgeRetrievalService:
         started = perf_counter()
         request_id = str(uuid4())
         try:
-            # 問答中的檢索屬於本次問答，不另建一筆 search 歷史。
             result = await self._search(request, request_id, started)
         except Exception:
             await self._audit(

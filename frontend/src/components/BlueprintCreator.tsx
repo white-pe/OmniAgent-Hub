@@ -115,10 +115,9 @@ export default function BlueprintCreator({
 
   return (
     <>
-      <Card title="用几句话创建专用 Agent" className="blueprint-card">
-        <Paragraph type="secondary">
-          模型只生成结构化草案，不会直接创建 Agent。你可以预览并修改角色、目标、规则、
-          Tool 请求和模型绑定，确认后才会写入数据库与 Workspace。
+      <div className="blueprint-card">
+        <Paragraph type="secondary" className="blueprint-intro">
+          描述 Agent 的工作目标。生成内容会先进入可编辑草案，审核确认后才会创建。
         </Paragraph>
         <Form form={generateForm} layout="vertical" onFinish={generate}>
           <Form.Item
@@ -165,7 +164,7 @@ export default function BlueprintCreator({
             生成可编辑 Blueprint 草案
           </Button>
         </Form>
-      </Card>
+      </div>
 
       <Modal
         title="审查 Agent Blueprint"
